@@ -1,5 +1,11 @@
-import { Chess } from 'chess.js';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Chess, type Square } from 'chess.js';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Link, useParams } from 'react-router-dom';
 import { getJoinLink } from '../lib/api';
@@ -12,6 +18,23 @@ import type { GameState } from '../types/game';
 
 const INITIAL_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const FILES = 'abcdefgh';
+const RANKS = '12345678';
+const ALL_SQUARES = FILES.split('').flatMap((file) =>
+  RANKS.split('').map((rank) => `${file}${rank}`),
+);
+
+type MoveHint = {
+  square: string;
+  isCapture: boolean;
+};
+
+type SelectedSquareState = {
+  square: string;
+  fen: string;
+  turn: string | null;
+  status: string;
+};
 
 function statusMessage(game: GameState): string {
   if (game.status === 'waiting') return 'Waiting for opponent to join...';
@@ -66,6 +89,122 @@ function squareHasOwnPiece(fen: string, square: string, color: 'w' | 'b'): boole
   return piece?.color === color;
 }
 
+function isDarkSquare(square: string): boolean {
+  const fileIndex = FILES.indexOf(square[0]);
+  const rank = Number(square[1]);
+  return (fileIndex + rank) % 2 === 1;
+}
+
+function pieceCanReachTrueKingSquare(
+  fen: string,
+  sourceSquare: string,
+  targetSquare: string,
+  color: 'w' | 'b',
+): boolean {
+  if (sourceSquare === targetSquare) return false;
+  const from = sourceSquare.toLowerCase();
+  const to = targetSquare.toLowerCase();
+  const piece = getPieceAt(fen, from);
+  if (!piece || piece.color !== color) return false;
+
+  const target = getPieceAt(fen, to);
+  if (target?.color === color) return false;
+
+  const fromFile = FILES.indexOf(from[0]);
+  const toFile = FILES.indexOf(to[0]);
+  const fromRank = Number(from[1]);
+  const toRank = Number(to[1]);
+  if (fromFile < 0 || toFile < 0 || Number.isNaN(fromRank) || Number.isNaN(toRank)) {
+    return false;
+  }
+
+  const fileDelta = toFile - fromFile;
+  const rankDelta = toRank - fromRank;
+  const absFile = Math.abs(fileDelta);
+  const absRank = Math.abs(rankDelta);
+  const direction = color === 'w' ? 1 : -1;
+
+  const pathIsClear = () => {
+    const fileStep = Math.sign(fileDelta);
+    const rankStep = Math.sign(rankDelta);
+    let file = fromFile + fileStep;
+    let rank = fromRank + rankStep;
+
+    while (file !== toFile || rank !== toRank) {
+      if (getPieceAt(fen, `${FILES[file]}${rank}`)) return false;
+      file += fileStep;
+      rank += rankStep;
+    }
+
+    return true;
+  };
+
+  if (piece.type === 'p') {
+    const startRank = color === 'w' ? 2 : 7;
+    if (fileDelta === 0 && rankDelta === direction && !target) return true;
+    if (
+      fileDelta === 0 &&
+      fromRank === startRank &&
+      rankDelta === direction * 2 &&
+      !target &&
+      !getPieceAt(fen, `${from[0]}${fromRank + direction}`)
+    ) {
+      return true;
+    }
+    if (absFile === 1 && rankDelta === direction) {
+      if (target && target.color !== color) return true;
+      return fen.split(' ')[3] === to;
+    }
+    return false;
+  }
+
+  if (piece.type === 'n') {
+    return (absFile === 1 && absRank === 2) || (absFile === 2 && absRank === 1);
+  }
+
+  if (piece.type === 'b') return absFile === absRank && pathIsClear();
+  if (piece.type === 'r') return (fileDelta === 0 || rankDelta === 0) && pathIsClear();
+  if (piece.type === 'q') {
+    return (
+      (absFile === absRank || fileDelta === 0 || rankDelta === 0) &&
+      pathIsClear()
+    );
+  }
+  if (piece.type === 'k') return Math.max(absFile, absRank) === 1;
+
+  return false;
+}
+
+function legalMoveHintsForSquare(
+  fen: string,
+  sourceSquare: string,
+  color: 'w' | 'b',
+  isTrueKing: boolean,
+): MoveHint[] {
+  if (isTrueKing) {
+    return ALL_SQUARES.filter((targetSquare) =>
+      pieceCanReachTrueKingSquare(fen, sourceSquare, targetSquare, color),
+    ).map((targetSquare) => ({
+      square: targetSquare,
+      isCapture: Boolean(getPieceAt(fen, targetSquare)),
+    }));
+  }
+
+  const chess = new Chess(fen);
+  return chess
+    .moves({ square: sourceSquare as Square, verbose: true })
+    .map((move) => ({
+      square: move.to,
+      isCapture: move.captured !== undefined,
+    }));
+}
+
+function lastMoveSquares(moves: string[]): string[] {
+  const lastMove = moves.at(-1);
+  if (!lastMove || lastMove.length < 4) return [];
+  return [lastMove.slice(0, 2), lastMove.slice(2, 4)];
+}
+
 type GameProps = {
   theme: ThemeMode;
   onToggleTheme: () => void;
@@ -77,6 +216,8 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     useGameSocket(gameId);
   const [boardWidth, setBoardWidth] = useState(480);
   const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [selectedSquareState, setSelectedSquareState] =
+    useState<SelectedSquareState | null>(null);
 
   useEffect(() => {
     function resize() {
@@ -103,6 +244,14 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     game.yourColor &&
     game.turn === game.yourColor;
   const fen = game?.fen;
+  const activePieceColor = game?.yourColor === 'white' ? 'w' : 'b';
+  const selectedSquare =
+    selectedSquareState &&
+    selectedSquareState.fen === fen &&
+    selectedSquareState.turn === game?.turn &&
+    selectedSquareState.status === game?.status
+      ? selectedSquareState.square
+      : null;
 
   const boardPosition = useMemo(() => {
     if (!fen) return fenToPosition(INITIAL_POSITION);
@@ -124,16 +273,19 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     return trackTrueKingSquare(origin, game.moves, game.yourColor);
   }, [game, isTrueKing]);
 
-  const squareStyles = useMemo(() => {
-    if (!trueKingHighlightSquare) return {};
-    return {
-      [trueKingHighlightSquare]: {
-        background:
-          'radial-gradient(circle, rgba(232, 185, 35, 0.24), transparent 64%)',
-        boxShadow: 'inset 0 0 0 4px rgba(232, 185, 35, 0.85)',
-      },
-    };
-  }, [trueKingHighlightSquare]);
+  const legalMoveHints = useMemo(() => {
+    if (!canMove || !fen || !selectedSquare || !activePieceColor) return [];
+    return legalMoveHintsForSquare(fen, selectedSquare, activePieceColor, isTrueKing);
+  }, [activePieceColor, canMove, fen, isTrueKing, selectedSquare]);
+
+  const legalMoveHintMap = useMemo(() => {
+    return new Map(legalMoveHints.map((hint) => [hint.square, hint]));
+  }, [legalMoveHints]);
+
+  const recentMoveSquares = useMemo(
+    () => (game ? lastMoveSquares(game.moves) : []),
+    [game],
+  );
 
   const boardTheme = useMemo(
     () =>
@@ -152,6 +304,68 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
           },
     [theme],
   );
+
+  const squareStyles = useMemo(() => {
+    const styledSquares = new Set<string>();
+    if (trueKingHighlightSquare) styledSquares.add(trueKingHighlightSquare);
+    if (selectedSquare) styledSquares.add(selectedSquare);
+    for (const square of recentMoveSquares) styledSquares.add(square);
+    for (const hint of legalMoveHints) styledSquares.add(hint.square);
+
+    const styles: Record<string, CSSProperties> = {};
+
+    for (const square of styledSquares) {
+      const dark = isDarkSquare(square);
+      const baseColor = dark ? boardTheme.darkSquare : boardTheme.lightSquare;
+      const backgrounds: string[] = [];
+      const shadows: string[] = [];
+      const hint = legalMoveHintMap.get(square);
+
+      if (recentMoveSquares.includes(square)) {
+        backgrounds.push(
+          'linear-gradient(rgba(250, 204, 21, 0.34), rgba(250, 204, 21, 0.34))',
+        );
+      }
+
+      if (trueKingHighlightSquare === square) {
+        backgrounds.push(
+          'radial-gradient(circle, rgba(232, 185, 35, 0.24), transparent 64%)',
+        );
+        shadows.push('inset 0 0 0 4px rgba(232, 185, 35, 0.85)');
+      }
+
+      if (hint) {
+        const markerColor = dark
+          ? 'rgba(248, 250, 252, 0.48)'
+          : 'rgba(15, 23, 42, 0.34)';
+        backgrounds.push(
+          hint.isCapture
+            ? `radial-gradient(circle, transparent 0 31%, ${markerColor} 32% 42%, transparent 43%)`
+            : `radial-gradient(circle, ${markerColor} 0 15%, transparent 16%)`,
+        );
+      }
+
+      if (selectedSquare === square) {
+        shadows.push('inset 0 0 0 4px rgba(56, 189, 248, 0.78)');
+      }
+
+      styles[square] = {
+        background: [...backgrounds, baseColor].join(', '),
+        boxShadow: shadows.join(', ') || undefined,
+        cursor: hint || selectedSquare === square ? 'pointer' : undefined,
+      };
+    }
+
+    return styles;
+  }, [
+    boardTheme.darkSquare,
+    boardTheme.lightSquare,
+    legalMoveHintMap,
+    legalMoveHints,
+    recentMoveSquares,
+    selectedSquare,
+    trueKingHighlightSquare,
+  ]);
 
   const tryMove = useCallback(
     (sourceSquare: string, targetSquare: string): string | null => {
@@ -207,6 +421,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
       if (!canMove || !targetSquare) return false;
       const uci = tryMove(sourceSquare, targetSquare);
       if (!uci) return false;
+      setSelectedSquareState(null);
       sendMove(uci);
       return true;
     },
@@ -215,12 +430,53 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
 
   const onSquareClick = useCallback(
     ({ square }: { piece: unknown; square: string }) => {
-      if (!canPickTrueKing || !game?.yourColor) return;
+      if (!game?.yourColor) return;
       const color = game.yourColor === 'white' ? 'w' : 'b';
-      if (!squareHasOwnPiece(game.fen, square, color)) return;
-      sendTrueKing(square);
+
+      if (canPickTrueKing) {
+        if (!squareHasOwnPiece(game.fen, square, color)) return;
+        sendTrueKing(square);
+        return;
+      }
+
+      if (!canMove) return;
+
+      const clickedOwnPiece = squareHasOwnPiece(game.fen, square, color);
+      if (selectedSquare && legalMoveHintMap.has(square)) {
+        const uci = tryMove(selectedSquare, square);
+        if (uci) {
+          setSelectedSquareState(null);
+          sendMove(uci);
+        }
+        return;
+      }
+
+      if (clickedOwnPiece) {
+        setSelectedSquareState(
+          selectedSquare === square
+            ? null
+            : {
+                square,
+                fen: game.fen,
+                turn: game.turn,
+                status: game.status,
+              },
+        );
+        return;
+      }
+
+      setSelectedSquareState(null);
     },
-    [canPickTrueKing, game, sendTrueKing],
+    [
+      canMove,
+      canPickTrueKing,
+      game,
+      legalMoveHintMap,
+      selectedSquare,
+      sendMove,
+      sendTrueKing,
+      tryMove,
+    ],
   );
 
   async function copyInvite() {
@@ -298,7 +554,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
                 squareStyles,
                 allowDragging: Boolean(canMove),
                 onPieceDrop: onDrop,
-                onSquareClick: canPickTrueKing ? onSquareClick : undefined,
+                onSquareClick,
               }}
             />
           </div>
