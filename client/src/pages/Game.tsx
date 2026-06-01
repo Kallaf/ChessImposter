@@ -7,18 +7,19 @@ import { fenToPosition, getPieceAt } from '../lib/fen';
 import { uciForTrueKingMove } from '../lib/trueKingMoves';
 import { trackTrueKingSquare } from '../lib/trueKingTracking';
 import { useGameSocket } from '../hooks/useGameSocket';
+import type { ThemeMode } from '../App';
 import type { GameState } from '../types/game';
 
 const INITIAL_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 function statusMessage(game: GameState): string {
-  if (game.status === 'waiting') return 'Waiting for opponent to join…';
+  if (game.status === 'waiting') return 'Waiting for opponent to join...';
   if (game.status === 'setup') {
     if (game.yourTrueKingReady) {
       return game.opponentReady
-        ? 'Starting game…'
-        : 'Waiting for opponent to click Start game…';
+        ? 'Starting game...'
+        : 'Waiting for opponent to click Start game...';
     }
     if (!game.yourTrueKingSquare) {
       return 'Click one of your pieces to choose your secret king';
@@ -27,15 +28,15 @@ function statusMessage(game: GameState): string {
   }
   if (game.status === 'finished') {
     if (game.gameMode === 'true_king' && game.result) {
-      if (game.result === 'draw') return 'Game over — draw';
-      if (game.result === 'abandoned') return 'Game over — opponent left';
+      if (game.result === 'draw') return 'Game over - draw';
+      if (game.result === 'abandoned') return 'Game over - opponent left';
       const winner = game.result === 'white' ? 'White' : 'Black';
-      return `Game over — ${winner} wins (true king captured)`;
+      return `Game over - ${winner} wins (true king captured)`;
     }
-    if (game.result === 'draw') return 'Game over — draw';
-    if (game.result === 'abandoned') return 'Game over — opponent left';
-    if (game.result === 'white') return 'Game over — White wins';
-    if (game.result === 'black') return 'Game over — Black wins';
+    if (game.result === 'draw') return 'Game over - draw';
+    if (game.result === 'abandoned') return 'Game over - opponent left';
+    if (game.result === 'white') return 'Game over - White wins';
+    if (game.result === 'black') return 'Game over - Black wins';
     return 'Game over';
   }
   if (!game.yourColor) return 'Spectating';
@@ -43,12 +44,34 @@ function statusMessage(game: GameState): string {
   return "Opponent's turn";
 }
 
+function formatMoveHistory(moves: string[]): string[] {
+  const chess = new Chess(INITIAL_POSITION);
+
+  return moves.map((uci) => {
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const promotion = uci.slice(4) || undefined;
+
+    try {
+      const move = chess.move({ from, to, promotion });
+      return move?.san ?? uci;
+    } catch {
+      return uci;
+    }
+  });
+}
+
 function squareHasOwnPiece(fen: string, square: string, color: 'w' | 'b'): boolean {
   const piece = getPieceAt(fen, square);
   return piece?.color === color;
 }
 
-export default function Game() {
+type GameProps = {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+};
+
+export default function Game({ theme, onToggleTheme }: GameProps) {
   const { gameId } = useParams<{ gameId: string }>();
   const { game, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing } =
     useGameSocket(gameId);
@@ -57,7 +80,7 @@ export default function Game() {
 
   useEffect(() => {
     function resize() {
-      const w = Math.min(520, window.innerWidth - 48);
+      const w = Math.min(560, window.innerWidth - 48);
       setBoardWidth(Math.max(280, w));
     }
     resize();
@@ -79,12 +102,18 @@ export default function Game() {
     game.status === 'active' &&
     game.yourColor &&
     game.turn === game.yourColor;
+  const fen = game?.fen;
 
   const boardPosition = useMemo(() => {
-    if (!game?.fen) return fenToPosition(INITIAL_POSITION);
-    if (isTrueKing) return fenToPosition(game.fen);
-    return game.fen;
-  }, [game?.fen, isTrueKing]);
+    if (!fen) return fenToPosition(INITIAL_POSITION);
+    if (isTrueKing) return fenToPosition(fen);
+    return fen;
+  }, [fen, isTrueKing]);
+
+  const moveHistory = useMemo(
+    () => (game ? formatMoveHistory(game.moves) : []),
+    [game],
+  );
 
   const trueKingHighlightSquare = useMemo(() => {
     if (!game || !isTrueKing) return null;
@@ -99,10 +128,30 @@ export default function Game() {
     if (!trueKingHighlightSquare) return {};
     return {
       [trueKingHighlightSquare]: {
-        boxShadow: 'inset 0 0 0 4px #e8b923',
+        background:
+          'radial-gradient(circle, rgba(232, 185, 35, 0.24), transparent 64%)',
+        boxShadow: 'inset 0 0 0 4px rgba(232, 185, 35, 0.85)',
       },
     };
   }, [trueKingHighlightSquare]);
+
+  const boardTheme = useMemo(
+    () =>
+      theme === 'dark'
+        ? {
+            darkSquare: '#1e293b',
+            lightSquare: '#f2eadc',
+            darkNotation: 'rgba(242, 234, 220, 0.72)',
+            lightNotation: 'rgba(30, 41, 59, 0.62)',
+          }
+        : {
+            darkSquare: '#64748b',
+            lightSquare: '#fff7ed',
+            darkNotation: 'rgba(255, 247, 237, 0.78)',
+            lightNotation: 'rgba(51, 65, 85, 0.58)',
+          },
+    [theme],
+  );
 
   const tryMove = useCallback(
     (sourceSquare: string, targetSquare: string): string | null => {
@@ -195,51 +244,94 @@ export default function Game() {
       <header className="site-header row">
         <div>
           <Link to="/" className="back-link">
-            ← Home
+            Back home
           </Link>
-          <h1>Game</h1>
+          <h1>Chess Dashboard</h1>
           {isTrueKing && <p className="mode-badge">True King mode</p>}
         </div>
-        <span className={`status-dot ${connected ? 'online' : 'offline'}`}>
-          {connected ? 'Connected' : 'Reconnecting…'}
-        </span>
+        <div className="header-actions">
+          <button type="button" className="theme-toggle" onClick={onToggleTheme}>
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <span className={`status-dot ${connected ? 'online' : 'offline'}`}>
+            {connected ? 'Connected' : 'Reconnecting...'}
+          </span>
+        </div>
       </header>
 
       <div className="game-layout">
-        <div className="board-wrap">
-          <Chessboard
-            options={{
-              id: 'main-board',
-              position: boardPosition,
-              boardOrientation:
-                game?.yourColor === 'black' ? 'black' : 'white',
-              boardStyle: { width: boardWidth, height: boardWidth },
-              squareStyles,
-              allowDragging: Boolean(canMove),
-              onPieceDrop: onDrop,
-              onSquareClick: canPickTrueKing ? onSquareClick : undefined,
-            }}
-          />
-        </div>
+        <main className="board-stage" aria-label="Chess board">
+          <div className="board-meta">
+            <div>
+              <span className="eyebrow">Live board</span>
+              <h2>{game ? statusMessage(game) : 'Loading game...'}</h2>
+            </div>
+            {game?.yourColor && <span className="color-chip">{game.yourColor}</span>}
+          </div>
+
+          <div className="board-wrap">
+            <Chessboard
+              options={{
+                id: 'main-board',
+                position: boardPosition,
+                boardOrientation:
+                  game?.yourColor === 'black' ? 'black' : 'white',
+                boardStyle: {
+                  width: boardWidth,
+                  height: boardWidth,
+                  borderRadius: 18,
+                  overflow: 'hidden',
+                  boxShadow:
+                    '0 30px 80px rgba(2, 6, 23, 0.48), 0 0 0 1px rgba(226, 232, 240, 0.12)',
+                },
+                darkSquareStyle: { backgroundColor: boardTheme.darkSquare },
+                lightSquareStyle: { backgroundColor: boardTheme.lightSquare },
+                darkSquareNotationStyle: {
+                  color: boardTheme.darkNotation,
+                },
+                lightSquareNotationStyle: {
+                  color: boardTheme.lightNotation,
+                },
+                dropSquareStyle: {
+                  boxShadow: 'inset 0 0 0 4px rgba(56, 189, 248, 0.75)',
+                },
+                squareStyles,
+                allowDragging: Boolean(canMove),
+                onPieceDrop: onDrop,
+                onSquareClick: canPickTrueKing ? onSquareClick : undefined,
+              }}
+            />
+          </div>
+        </main>
 
         <aside className="side-panel">
           {game && (
             <>
-              <div className="panel-block">
-                <h2>Room</h2>
-                <p className="room-code">{game.roomCode}</p>
+              <section className="profile-card">
+                <div className="avatar" aria-hidden="true">
+                  G
+                </div>
+                <div>
+                  <span className="eyebrow">Player profile</span>
+                  <h2>Guest Player</h2>
+                  <p>{game.yourColor ? `${game.yourColor} side` : 'Spectator'}</p>
+                </div>
+              </section>
+
+              <section className="panel-block room-panel">
+                <div>
+                  <h2>Room</h2>
+                  <p className="room-code">{game.roomCode}</p>
+                </div>
                 <button type="button" className="btn secondary" onClick={copyInvite}>
-                  Copy invite link
+                  Copy invite
                 </button>
                 {copyHint && <p className="hint">{copyHint}</p>}
-              </div>
+              </section>
 
-              <div className="panel-block">
-                <h2>Status</h2>
+              <section className="panel-block">
+                <h2>Game status</h2>
                 <p className="status-text">{statusMessage(game)}</p>
-                {game.yourColor && game.status === 'active' && (
-                  <p className="hint">You are playing as {game.yourColor}</p>
-                )}
                 {isTrueKing && trueKingHighlightSquare && game.status === 'active' && (
                   <p className="hint">
                     Your secret king piece is marked in gold and moves with that
@@ -257,25 +349,33 @@ export default function Game() {
                 )}
                 {isTrueKing && inSetup && game.yourTrueKingReady && (
                   <p className="hint">
-                    Your choice is locked in. Waiting for opponent…
+                    Your choice is locked in. Waiting for opponent...
                   </p>
                 )}
-              </div>
+              </section>
 
-              {game.moves.length > 0 && (
-                <div className="panel-block">
-                  <h2>Moves</h2>
+              <section className="panel-block moves-panel">
+                <div className="panel-heading">
+                  <h2>Move history</h2>
+                  <span>{moveHistory.length} moves</span>
+                </div>
+                {moveHistory.length > 0 ? (
                   <ol className="move-list">
-                    {game.moves.map((uci, i) => (
-                      <li key={`${i}-${uci}`}>{uci}</li>
+                    {moveHistory.map((move, i) => (
+                      <li key={`${i}-${game.moves[i]}`}>
+                        <span>{Math.floor(i / 2) + 1}</span>
+                        <strong>{move}</strong>
+                      </li>
                     ))}
                   </ol>
-                </div>
-              )}
+                ) : (
+                  <p className="empty-log">No moves yet</p>
+                )}
+              </section>
             </>
           )}
 
-          {!game && !error && <p>Loading game…</p>}
+          {!game && !error && <p>Loading game...</p>}
           {error && <p className="banner error">{error}</p>}
         </aside>
       </div>

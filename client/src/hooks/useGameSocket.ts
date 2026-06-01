@@ -11,6 +11,7 @@ export function useGameSocket(gameId: string | undefined) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const mountedRef = useRef(true);
+  const connectRef = useRef<() => void>(() => {});
 
   const resync = useCallback(async () => {
     if (!gameId) return;
@@ -61,7 +62,7 @@ export function useGameSocket(gameId: string | undefined) {
       );
       reconnectAttempt.current += 1;
       window.setTimeout(() => {
-        if (mountedRef.current && gameId) connect();
+        if (mountedRef.current && gameId) connectRef.current();
       }, delay);
     };
 
@@ -69,12 +70,15 @@ export function useGameSocket(gameId: string | undefined) {
       if (mountedRef.current) setError('Connection error');
     };
   }, [gameId]);
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     mountedRef.current = true;
     if (!gameId) return;
 
-    void resync();
+    queueMicrotask(() => void resync());
     connect();
 
     return () => {
