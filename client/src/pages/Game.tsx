@@ -12,6 +12,7 @@ import { getJoinLink } from '../lib/api';
 import { fenToPosition, getPieceAt } from '../lib/fen';
 import { uciForTrueKingMove } from '../lib/trueKingMoves';
 import { trackTrueKingSquare } from '../lib/trueKingTracking';
+import { useGameClock } from '../hooks/useGameClock';
 import { useGameSocket } from '../hooks/useGameSocket';
 import type { ThemeMode } from '../App';
 import type { GameState } from '../types/game';
@@ -212,8 +213,12 @@ type GameProps = {
 
 export default function Game({ theme, onToggleTheme }: GameProps) {
   const { gameId } = useParams<{ gameId: string }>();
-  const { game, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing } =
+  const { game, clocks, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing } =
     useGameSocket(gameId);
+  const clockDisplay = useGameClock(
+    clocks ?? game?.clocks ?? null,
+    game?.status === 'active',
+  );
   const [boardWidth, setBoardWidth] = useState(480);
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [selectedSquareState, setSelectedSquareState] =
@@ -500,7 +505,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
       <header className="site-header row">
         <div>
           <Link to="/" className="back-link">
-            Back home
+            ← Lobby
           </Link>
           <h1>Chess Dashboard</h1>
           {isTrueKing && <p className="mode-badge">True King mode</p>}
@@ -565,14 +570,45 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
             <>
               <section className="profile-card">
                 <div className="avatar" aria-hidden="true">
-                  G
+                  {(game.yourDisplayName ?? 'G').slice(0, 1).toUpperCase()}
                 </div>
                 <div>
-                  <span className="eyebrow">Player profile</span>
-                  <h2>Guest Player</h2>
-                  <p>{game.yourColor ? `${game.yourColor} side` : 'Spectator'}</p>
+                  <span className="eyebrow">You</span>
+                  <h2>{game.yourDisplayName ?? 'Guest'}</h2>
+                  <p>
+                    {game.yourColor ? `${game.yourColor} side` : 'Spectator'}
+                    {game.opponentDisplayName
+                      ? ` vs ${game.opponentDisplayName}`
+                      : ''}
+                  </p>
                 </div>
               </section>
+
+              {game.timeControl && (
+                <section className="panel-block clock-panel">
+                  <h2>Clock · {game.timeControl}</h2>
+                  <div className="clock-row">
+                    <span>White</span>
+                    <strong
+                      className={
+                        clocks?.activeColor === 'white' ? 'clock-active' : ''
+                      }
+                    >
+                      {clockDisplay.white}
+                    </strong>
+                  </div>
+                  <div className="clock-row">
+                    <span>Black</span>
+                    <strong
+                      className={
+                        clocks?.activeColor === 'black' ? 'clock-active' : ''
+                      }
+                    >
+                      {clockDisplay.black}
+                    </strong>
+                  </div>
+                </section>
+              )}
 
               <section className="panel-block room-panel">
                 <div>

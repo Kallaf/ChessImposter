@@ -20,6 +20,15 @@ export interface GameState {
   needsTrueKingSelection: boolean;
   yourTrueKingReady: boolean;
   opponentReady: boolean;
+  timeControl?: string | null;
+  clocks?: {
+    whiteMs: number;
+    blackMs: number;
+    activeColor: 'white' | 'black' | null;
+    serverNowMs: number;
+  } | null;
+  yourDisplayName?: string | null;
+  opponentDisplayName?: string | null;
 }
 
 export interface WsMessage {

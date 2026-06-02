@@ -11,7 +11,7 @@ from app.models.game import (
     GameStatus,
     doc_to_response,
 )
-from app.services import chess_engine
+from app.services import chess_engine, clock_service
 
 ROOM_CODE_LENGTH = 6
 ROOM_ALPHABET = string.ascii_uppercase + string.digits
@@ -39,7 +39,12 @@ def _initial_status(game_mode: str, has_black: bool) -> str:
     return GameStatus.WAITING.value
 
 
-async def create_game(guest_id: str, game_mode: str = GameMode.STANDARD.value):
+async def create_game(
+    guest_id: str,
+    game_mode: str = GameMode.STANDARD.value,
+    display_name: str | None = None,
+    time_control: str | None = None,
+):
     db = get_database()
     game_id = str(uuid.uuid4())
     room_code = await _generate_room_code()
@@ -50,6 +55,8 @@ async def create_game(guest_id: str, game_mode: str = GameMode.STANDARD.value):
         "gameMode": game_mode,
         "whiteGuestId": guest_id,
         "blackGuestId": None,
+        "whiteDisplayName": display_name or "Guest",
+        "blackDisplayName": None,
         "whiteTrueKingSquare": None,
         "blackTrueKingSquare": None,
         "whiteTrueKingOrigin": None,
@@ -63,11 +70,17 @@ async def create_game(guest_id: str, game_mode: str = GameMode.STANDARD.value):
         "createdAt": now,
         "updatedAt": now,
     }
+    if time_control:
+        doc.update(clock_service.init_clock_fields(time_control))
     await db.games.insert_one(doc)
     return doc_to_response(doc, guest_id)
 
 
-async def join_game(room_code: str, guest_id: str):
+async def join_game(
+    room_code: str,
+    guest_id: str,
+    display_name: str | None = None,
+):
     db = get_database()
     doc = await db.games.find_one({"roomCode": room_code.upper().strip()})
     if not doc:
@@ -82,16 +95,17 @@ async def join_game(room_code: str, guest_id: str):
         now = _utcnow()
         game_mode = doc.get("gameMode", GameMode.STANDARD.value)
         new_status = _initial_status(game_mode, has_black=True)
-        await db.games.update_one(
-            {"gameId": doc["gameId"]},
-            {
-                "$set": {
-                    "blackGuestId": guest_id,
-                    "status": new_status,
-                    "updatedAt": now,
-                }
-            },
-        )
+        update: dict = {
+            "blackGuestId": guest_id,
+            "blackDisplayName": display_name or "Guest",
+            "status": new_status,
+            "updatedAt": now,
+        }
+        if new_status == GameStatus.ACTIVE.value and doc.get("timeControl"):
+            doc["blackGuestId"] = guest_id
+            doc["status"] = new_status
+            update.update(clock_service.start_clocks_for_active_game(doc))
+        await db.games.update_one({"gameId": doc["gameId"]}, {"$set": update})
         doc = await db.games.find_one({"gameId": doc["gameId"]})
     return doc_to_response(doc, guest_id)
 
@@ -185,10 +199,14 @@ async def confirm_true_king(game_id: str, guest_id: str):
         and doc.get("blackTrueKingReady")
         and doc.get("status") == GameStatus.SETUP.value
     ):
-        await db.games.update_one(
-            {"gameId": game_id},
-            {"$set": {"status": GameStatus.ACTIVE.value, "updatedAt": _utcnow()}},
-        )
+        active_update: dict = {
+            "status": GameStatus.ACTIVE.value,
+            "updatedAt": _utcnow(),
+        }
+        doc = await db.games.find_one({"gameId": game_id})
+        if doc and doc.get("timeControl"):
+            active_update.update(clock_service.start_clocks_for_active_game(doc))
+        await db.games.update_one({"gameId": game_id}, {"$set": active_update})
         doc = await db.games.find_one({"gameId": game_id})
 
     return doc_to_response(doc, guest_id)
@@ -233,6 +251,10 @@ async def apply_game_move(game_id: str, guest_id: str, uci: str):
     now = _utcnow()
     moves = doc.get("moves", []) + [uci]
     update: dict = {"moves": moves, "updatedAt": now}
+
+    if doc.get("timeControl") and doc.get("status") == GameStatus.ACTIVE.value:
+        increment = int(doc.get("incrementMs", 0))
+        update.update(clock_service.apply_move_clock(doc, player_color, increment))
 
     if game_mode == GameMode.TRUE_KING.value:
         white_tk = doc.get("whiteTrueKingSquare")

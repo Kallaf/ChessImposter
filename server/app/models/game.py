@@ -24,8 +24,6 @@ class GameResult(str, Enum):
     BLACK = "black"
     DRAW = "draw"
     ABANDONED = "abandoned"
-
-
 class CreateGameRequest(BaseModel):
     guest_id: str = Field(..., alias="guestId")
     game_mode: GameMode = Field(GameMode.STANDARD, alias="gameMode")
@@ -70,6 +68,10 @@ class GameResponse(BaseModel):
     needs_true_king_selection: bool = Field(False, alias="needsTrueKingSelection")
     your_true_king_ready: bool = Field(False, alias="yourTrueKingReady")
     opponent_ready: bool = Field(False, alias="opponentReady")
+    time_control: str | None = Field(None, alias="timeControl")
+    clocks: dict | None = None
+    your_display_name: str | None = Field(None, alias="yourDisplayName")
+    opponent_display_name: str | None = Field(None, alias="opponentDisplayName")
 
     model_config = {"populate_by_name": True, "use_enum_values": True}
 
@@ -124,6 +126,20 @@ def doc_to_response(doc: dict, guest_id: str | None = None) -> GameResponse:
     else:
         your_true_king_origin = None
 
+    clocks = None
+    if doc.get("timeControl"):
+        from app.services import clock_service
+
+        clocks = clock_service.snapshot_clocks(doc)
+    your_display_name = None
+    opponent_display_name = None
+    if guest_id == white_id:
+        your_display_name = doc.get("whiteDisplayName")
+        opponent_display_name = doc.get("blackDisplayName")
+    elif guest_id == black_id:
+        your_display_name = doc.get("blackDisplayName")
+        opponent_display_name = doc.get("whiteDisplayName")
+
     return GameResponse(
         gameId=doc["gameId"],
         roomCode=doc["roomCode"],
@@ -141,4 +157,8 @@ def doc_to_response(doc: dict, guest_id: str | None = None) -> GameResponse:
         needsTrueKingSelection=needs_selection,
         yourTrueKingReady=your_ready,
         opponentReady=opponent_ready,
+        timeControl=doc.get("timeControl"),
+        clocks=clocks,
+        yourDisplayName=your_display_name,
+        opponentDisplayName=opponent_display_name,
     )

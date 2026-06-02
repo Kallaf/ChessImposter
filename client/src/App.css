@@ -573,3 +573,173 @@
     border-radius: 20px;
   }
 }
+
+.guest-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.guest-gate-card {
+  width: min(100%, 420px);
+  padding: 2rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.guest-gate-eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.guest-gate-sub {
+  color: var(--text-muted);
+}
+
+.guest-gate-card label {
+  display: block;
+  margin: 1rem 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.guest-gate-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.guest-gate-card .btn {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.lobby-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 900px) {
+  .lobby-grid {
+    grid-template-columns: 1fr 320px;
+  }
+}
+
+.lobby-main {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.form-grid select {
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.lobby-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.challenge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.challenge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--muted-bg);
+}
+
+.challenge-meta {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.lobby-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+}
+
+.chat-feed {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0.75rem 0;
+  padding-right: 0.25rem;
+  max-height: 360px;
+}
+
+.chat-line {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.chat-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-form input {
+  flex: 1;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.clock-panel .clock-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.clock-active {
+  color: var(--accent);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}

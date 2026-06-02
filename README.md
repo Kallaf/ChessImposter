@@ -48,15 +48,20 @@ App: http://localhost:5173
 
 ## How to play
 
-1. Open http://localhost:5173 and click **Create game** (choose **Standard** or **True King** mode).
-2. Copy the **invite link** or room code from the game page.
-3. Open a second browser tab (or another device on your network) and **Join** with the room code.
-4. **Standard**: White moves first; normal chess rules apply.
-5. **True King**: After both players join, each clicks one of their own pieces to designate a secret “true king”. If that piece is captured, they lose. The real king can be captured and the game continues. Your secret king is highlighted in gold on your screen only.
+1. Open http://localhost:5173 — enter a **display name** (or accept a generated guest name).
+2. In the **Global Lobby**, post in global chat, **Create Game** with a time control and side preference, or **Join** an open challenge.
+3. Both players are sent to the game room; **clocks are server-authoritative** (Bullet / Blitz / Rapid presets).
+4. **Standard**: normal chess rules; moves validated on the server.
+5. **True King** (if selected when creating a challenge): each player picks a secret king piece, confirms, then play proceeds. Losing the secret piece ends the game.
 
-Moves are validated on the server.
+Room codes and invite links still work on the game page for spectators or late joiners. Refreshing reconnects via WebSocket and syncs board + clocks from the server.
 
-Refreshing the page reconnects via WebSocket and restores state from the API.
+### WebSocket protocol (summary)
+
+**Lobby** (`/api/ws/lobby`): `lobby:state`, `lobby:chat`, `lobby:challenge_created`, `lobby:challenge_removed`, `lobby:game_started`  
+**Game** (`/api/ws/game/{gameId}`): `game:state`, `game:move`, `game:time_sync`, `game:timeout`  
+
+Client clocks drift-correct when local display differs from `game:time_sync` by more than 500ms.
 
 ## Environment variables
 
