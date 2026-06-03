@@ -16,7 +16,7 @@ import { useGameClock } from '../hooks/useGameClock';
 import { useGameSocket } from '../hooks/useGameSocket';
 import type { ThemeMode } from '../App';
 import type { GameState } from '../types/game';
-import { Crown, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 
 const INITIAL_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
