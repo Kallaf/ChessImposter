@@ -5,10 +5,10 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Link, useParams } from 'react-router-dom';
-import { getJoinLink } from '../lib/api';
 import { fenToPosition, getPieceAt } from '../lib/fen';
 import { uciForTrueKingMove } from '../lib/trueKingMoves';
 import { trackTrueKingSquare } from '../lib/trueKingTracking';
@@ -16,7 +16,19 @@ import { useGameClock } from '../hooks/useGameClock';
 import { useGameSocket } from '../hooks/useGameSocket';
 import type { ThemeMode } from '../App';
 import type { GameState } from '../types/game';
-import { Moon, Sun } from 'lucide-react';
+import { 
+  Moon, 
+  Sun, 
+  Flag, 
+  Handshake, 
+  XCircle, 
+  MessageSquare, 
+  PlaySquare,
+  User,
+  X,
+  PlusCircle,
+  RefreshCw
+} from 'lucide-react';
 
 const INITIAL_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -67,23 +79,6 @@ function statusMessage(game: GameState): string {
   if (!game.yourColor) return 'Spectating';
   if (game.turn === game.yourColor) return 'Your turn';
   return "Opponent's turn";
-}
-
-function formatMoveHistory(moves: string[]): string[] {
-  const chess = new Chess(INITIAL_POSITION);
-
-  return moves.map((uci) => {
-    const from = uci.slice(0, 2);
-    const to = uci.slice(2, 4);
-    const promotion = uci.slice(4) || undefined;
-
-    try {
-      const move = chess.move({ from, to, promotion });
-      return move?.san ?? uci;
-    } catch {
-      return uci;
-    }
-  });
 }
 
 function squareHasOwnPiece(fen: string, square: string, color: 'w' | 'b'): boolean {
@@ -207,6 +202,16 @@ function lastMoveSquares(moves: string[]): string[] {
   return [lastMove.slice(0, 2), lastMove.slice(2, 4)];
 }
 
+const playSound = (type: 'move' | 'start' | 'end') => {
+  const audioMap = {
+    move: '/sounds/move.mp3',
+    start: '/sounds/game-start.mp3',
+    end: '/sounds/game-end.mp3'
+  };
+  const audio = new Audio(audioMap[type]);
+  audio.play().catch((e) => console.log('Audio playback prevented by browser:', e));
+};
+
 type GameProps = {
   theme: ThemeMode;
   onToggleTheme: () => void;
@@ -220,14 +225,39 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     clocks ?? game?.clocks ?? null,
     game?.status === 'active',
   );
+  
   const [boardWidth, setBoardWidth] = useState(480);
-  const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [showEndPopup, setShowEndPopup] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  
+  const previousMoveCount = useRef(0);
+  const previousStatus = useRef<string | null>(null);
+
   const [selectedSquareState, setSelectedSquareState] =
     useState<SelectedSquareState | null>(null);
 
   useEffect(() => {
+    if (!game) return;
+
+    if (game.moves && game.moves.length > previousMoveCount.current) {
+      playSound('move');
+      previousMoveCount.current = game.moves.length;
+    }
+
+    if (game.status !== previousStatus.current) {
+      if (game.status === 'active') {
+        playSound('start');
+      } else if (game.status === 'finished') {
+        playSound('end');
+        setShowEndPopup(true);
+      }
+      previousStatus.current = game.status;
+    }
+  }, [game]);
+
+  useEffect(() => {
     function resize() {
-      const w = Math.min(560, window.innerWidth - 48);
+      const w = Math.min(800, window.innerWidth - 48);
       setBoardWidth(Math.max(280, w));
     }
     resize();
@@ -237,12 +267,10 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
 
   const isTrueKing = game?.gameMode === 'true_king';
   const inSetup = game?.status === 'setup';
-  const canPickTrueKing = Boolean(
-    inSetup && game && !game.yourTrueKingReady,
-  );
-  const canStartGame = Boolean(
-    inSetup && game?.yourTrueKingSquare && !game.yourTrueKingReady,
-  );
+  const canPickTrueKing = Boolean(inSetup && game && !game.yourTrueKingReady);
+  const canStartGame = Boolean(inSetup && game?.yourTrueKingSquare && !game.yourTrueKingReady);
+  
+  const canAbort = (game?.moves?.length ?? 0) < 2;
 
   const canMove =
     game &&
@@ -264,11 +292,6 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     if (isTrueKing) return fenToPosition(fen);
     return fen;
   }, [fen, isTrueKing]);
-
-  const moveHistory = useMemo(
-    () => (game ? formatMoveHistory(game.moves) : []),
-    [game],
-  );
 
   const trueKingHighlightSquare = useMemo(() => {
     if (!game || !isTrueKing) return null;
@@ -416,14 +439,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
   );
 
   const onDrop = useCallback(
-    ({
-      sourceSquare,
-      targetSquare,
-    }: {
-      piece: { pieceType: string };
-      sourceSquare: string;
-      targetSquare: string | null;
-    }) => {
+    ({ sourceSquare, targetSquare }: { piece: { pieceType: string }; sourceSquare: string; targetSquare: string | null; }) => {
       if (!canMove || !targetSquare) return false;
       const uci = tryMove(sourceSquare, targetSquare);
       if (!uci) return false;
@@ -470,27 +486,10 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
         );
         return;
       }
-
       setSelectedSquareState(null);
     },
-    [
-      canMove,
-      canPickTrueKing,
-      game,
-      legalMoveHintMap,
-      selectedSquare,
-      sendMove,
-      sendTrueKing,
-      tryMove,
-    ],
+    [canMove, canPickTrueKing, game, legalMoveHintMap, selectedSquare, sendMove, sendTrueKing, tryMove],
   );
-
-  async function copyInvite() {
-    if (!game?.roomCode) return;
-    await navigator.clipboard.writeText(getJoinLink(game.roomCode));
-    setCopyHint('Link copied!');
-    window.setTimeout(() => setCopyHint(null), 2000);
-  }
 
   if (!gameId) {
     return (
@@ -505,10 +504,17 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     );
   }
 
+  const isWhite = game?.yourColor === 'white';
+  const myClock = isWhite ? clockDisplay.white : clockDisplay.black;
+  const oppClock = isWhite ? clockDisplay.black : clockDisplay.white;
+
+  const myActive = clocks?.activeColor === game?.yourColor;
+  const oppActive = clocks?.activeColor !== game?.yourColor && game?.status === 'active';
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground flex flex-col relative">
       {/* Header - Navbar */}
-      <header className="border-b border-border bg-card shadow-sm">
+      <header className="border-b border-border bg-card shadow-sm shrink-0">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <Link to="/" className="text-primary hover:text-primary/80 transition-colors">
@@ -519,58 +525,70 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
                 True King Mode
               </span>
             )}
+            <span className="ml-4 text-sm text-muted-foreground flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+              {connected ? 'Connected' : 'Reconnecting...'}
+            </span>
           </div>
           <button
             onClick={onToggleTheme}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted hover:bg-accent transition-colors text-foreground"
             aria-label="Toggle theme"
           >
-            {theme === 'dark' ? (
-              <Sun className="w-5 h-5" />
-            ) : (
-              <Moon className="w-5 h-5" />
-            )}
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Board Section */}
-          <div className="lg:col-span-2">
-            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-              {/* Status Message */}
-              <div className="p-4 sm:p-8 pb-6">
-                <h2 className="text-2xl font-semibold text-foreground">
-                  {game ? statusMessage(game) : 'Loading game...'}
-                </h2>
-                {game?.yourColor && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Playing as: <span className="font-medium capitalize">{game.yourColor}</span>
-                  </p>
-                )}
+      {/* Main Board Layout */}
+      <div className="flex-1 w-full max-w-4xl mx-auto px-4 py-8 flex flex-col items-center">
+        {game ? (
+          <div className="w-full max-w-[600px] flex flex-col gap-4 relative">
+            
+            {/* Opponent Profile - Top Left */}
+            <div className="flex justify-between items-center w-full px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden border border-border">
+                  <User className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-sm">
+                    {game.opponentDisplayName || 'Opponent'}
+                  </span>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {game.yourColor === 'white' ? 'Black' : 'White'}
+                  </span>
+                </div>
               </div>
+              {/* Opponent Timer */}
+              {game.timeControl && (
+                <div className={`px-4 py-2 rounded font-mono text-xl font-bold transition-colors ${
+                  oppActive ? 'bg-primary/20 text-primary border border-primary/50' : 'bg-card text-foreground border border-border'
+                }`}>
+                  {oppClock}
+                </div>
+              )}
+            </div>
 
               {/* Chessboard - Full Width Container */}
               <div className="flex justify-center items-center bg-background/50 p-4 sm:p-6">
-                <Chessboard
-                  options={{
-                    id: 'main-board',
-                    position: boardPosition,
+              <Chessboard
+                options={{
+                  id: 'main-board',
+                  position: boardPosition,
                     boardOrientation:
                       game?.yourColor === 'black' ? 'black' : 'white',
-                    boardStyle: {
-                      width: '100%',
-                      maxWidth: boardWidth,
-                      aspectRatio: '1',
+                  boardStyle: {
+                    width: '100%',
+                    maxWidth: boardWidth,
+                    aspectRatio: '1',
                       borderRadius: 12,
                       overflow: 'hidden',
                       boxShadow:
                         '0 10px 30px rgba(0, 0, 0, 0.2)',
-                    },
-                    darkSquareStyle: { backgroundColor: boardTheme.darkSquare },
-                    lightSquareStyle: { backgroundColor: boardTheme.lightSquare },
+                  },
+                  darkSquareStyle: { backgroundColor: boardTheme.darkSquare },
+                  lightSquareStyle: { backgroundColor: boardTheme.lightSquare },
                     darkSquareNotationStyle: {
                       color: boardTheme.darkNotation,
                     },
@@ -580,174 +598,173 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
                     dropSquareStyle: {
                       boxShadow: 'inset 0 0 0 4px rgba(186, 134, 97, 0.75)',
                     },
-                    squareStyles,
-                    allowDragging: Boolean(canMove),
-                    onPieceDrop: onDrop,
-                    onSquareClick,
-                  }}
-                />
-              </div>
-
-              {/* Connection Status */}
-              <div className="flex items-center justify-center gap-2 p-4 sm:p-8 pt-6 border-t border-border">
-                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-                <span className="text-sm text-muted-foreground">
-                  {connected ? 'Connected' : 'Reconnecting...'}
-                </span>
-              </div>
+                  squareStyles,
+                  allowDragging: Boolean(canMove),
+                  onPieceDrop: onDrop,
+                  onSquareClick,
+                }}
+              />
             </div>
-          </div>
 
-          {/* Side Panel */}
-          <aside className="space-y-6">
-            {game && (
-              <>
-                {/* Player Info */}
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-lg font-semibold text-primary">
-                        {(game.yourDisplayName ?? 'G').slice(0, 1).toUpperCase()}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">You</p>
-                      <h3 className="text-lg font-medium text-foreground">
-                        {game.yourDisplayName ?? 'Guest'}
-                      </h3>
-                      {game.opponentDisplayName && (
-                        <p className="text-sm text-muted-foreground">
-                          vs {game.opponentDisplayName}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+            {/* User Profile - Bottom Right Aligned Content */}
+            <div className="flex justify-between items-center w-full px-2 mt-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden border border-border">
+                  <User className="w-6 h-6 text-muted-foreground" />
                 </div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-sm">
+                    {game.yourDisplayName || 'You'}
+                  </span>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {game.yourColor}
+                  </span>
+                </div>
+              </div>
 
-                {/* Clock */}
-                {game.timeControl && (
-                  <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                    <h3 className="text-sm font-medium text-muted-foreground mb-4">
-                      Clock · {game.timeControl}
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">White</span>
-                        <span
-                          className={`text-xl font-mono font-semibold ${
-                            clocks?.activeColor === 'white'
-                              ? 'text-primary'
-                              : 'text-foreground'
-                          }`}
-                        >
-                          {clockDisplay.white}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Black</span>
-                        <span
-                          className={`text-xl font-mono font-semibold ${
-                            clocks?.activeColor === 'black'
-                              ? 'text-primary'
-                              : 'text-foreground'
-                          }`}
-                        >
-                          {clockDisplay.black}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              {/* User Timer */}
+              {game.timeControl && (
+                <div className={`px-4 py-2 rounded font-mono text-xl font-bold transition-colors ${
+                  myActive ? 'bg-primary/20 text-primary border border-primary/50' : 'bg-card text-foreground border border-border'
+                }`}>
+                  {myClock}
+                </div>
+              )}
+            </div>
 
-                {/* Room Code */}
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Room</h3>
-                  <div className="font-mono text-sm bg-muted/30 rounded p-3 mb-3 text-foreground break-all">
-                    {game.roomCode}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={copyInvite}
-                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
-                  >
-                    Copy Invite
+            {/* True King Pre-Game Messages */}
+            {isTrueKing && game.status === 'setup' && (
+              <div className="w-full text-center p-3 bg-muted/50 rounded-lg border border-border mt-2">
+                <p className="text-sm font-medium">{statusMessage(game)}</p>
+              </div>
+            )}
+
+            {/* Action Buttons underneath User Profile */}
+            <div className="w-full flex items-center justify-between sm:justify-center gap-1 sm:gap-3 mt-2 sm:mt-4 p-2 sm:p-4 bg-card border border-border rounded-xl shadow-sm relative overflow-hidden">
+              
+              {/* Conditional Action Buttons based on Game Status */}
+              {game.status === 'finished' ? (
+                <>
+                  <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded hover:bg-muted transition-colors text-muted-foreground whitespace-nowrap">
+                    <PlusCircle className="w-4 h-4" /> New Game
                   </button>
-                  {copyHint && (
-                    <p className="text-xs text-green-600 mt-2 text-center">{copyHint}</p>
-                  )}
-                </div>
-
-                {/* Game Status & Actions */}
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Game Status</h3>
-                  <p className="text-foreground mb-4">{statusMessage(game)}</p>
-                  
-                  {isTrueKing && trueKingHighlightSquare && game.status === 'active' && (
-                    <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 mb-3">
-                      Your secret king piece is marked in gold
-                    </p>
-                  )}
-
-                  {canStartGame && (
-                    <button
-                      type="button"
-                      onClick={sendConfirmTrueKing}
-                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity font-medium"
-                    >
-                      Start Game
+                  <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded hover:bg-muted transition-colors text-muted-foreground whitespace-nowrap">
+                    <RefreshCw className="w-4 h-4" /> Rematch
+                  </button>
+                </>
+              ) : game.status === 'active' ? (
+                <>
+                  {canAbort ? (
+                    <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded hover:bg-muted transition-colors text-muted-foreground whitespace-nowrap">
+                      <XCircle className="w-4 h-4" /> Abort
+                    </button>
+                  ) : (
+                    <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded hover:bg-muted transition-colors text-muted-foreground whitespace-nowrap">
+                      <Flag className="w-4 h-4" /> Resign
                     </button>
                   )}
+                  <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded hover:bg-muted transition-colors text-muted-foreground whitespace-nowrap">
+                    <Handshake className="w-4 h-4" /> Draw
+                  </button>
+                </>
+              ) : null}
 
-                  {isTrueKing && inSetup && game.yourTrueKingReady && (
-                    <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
-                      Your choice is locked in. Waiting for opponent...
-                    </p>
-                  )}
-                </div>
+              {/* Chat is always visible except when start button is lone child */}
+              {(game.status === 'active' || game.status === 'finished') && (
+                 <div className="hidden sm:block w-px h-6 bg-border mx-1" />
+              )}
+              
+              {(!canStartGame) && (
+                <button 
+                  onClick={() => setIsChatOpen(!isChatOpen)}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded transition-colors whitespace-nowrap ${
+                    isChatOpen ? 'bg-primary/10 text-primary' : 'hover:bg-primary/10 hover:text-primary text-muted-foreground'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" /> Chat
+                </button>
+              )}
+              
+              {/* Start Game Button for Setup Phase */}
+              {canStartGame && (
+                <button
+                  type="button"
+                  onClick={sendConfirmTrueKing}
+                  className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity font-bold whitespace-nowrap"
+                >
+                  <PlaySquare className="w-4 h-4" /> Start Game
+                </button>
+              )}
+            </div>
 
-                {/* Move History */}
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-sm font-medium text-muted-foreground">
-                      Move History
-                    </h3>
-                    <span className="text-xs bg-muted text-muted-foreground rounded px-2 py-1">
-                      {moveHistory.length} moves
-                    </span>
-                  </div>
-                  {moveHistory.length > 0 ? (
-                    <ol className="space-y-1 text-sm max-h-64 overflow-y-auto">
-                      {moveHistory.map((move, i) => (
-                        <li key={`${i}-${game.moves[i]}`} className="flex gap-2">
-                          <span className="text-muted-foreground font-medium min-w-6">
-                            {Math.floor(i / 2) + 1}.
-                          </span>
-                          <span className="font-mono text-foreground">{move}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No moves yet
-                    </p>
-                  )}
-                </div>
-              </>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-64">
+            {error ? (
+              <p className="text-destructive font-medium">{error}</p>
+            ) : (
+              <p className="text-muted-foreground animate-pulse">Loading board...</p>
             )}
-
-            {!game && !error && (
-              <div className="bg-card border border-border rounded-xl p-6 shadow-sm text-center">
-                <p className="text-muted-foreground">Loading game...</p>
-              </div>
-            )}
-            {error && (
-              <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-6 shadow-sm">
-                <p className="text-destructive">{error}</p>
-              </div>
-            )}
-          </aside>
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Floating Chat Window Overlay */}
+      {isChatOpen && (
+        <div className="absolute bottom-6 right-6 w-80 bg-card border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col h-96 z-40 animate-in slide-in-from-bottom-4">
+          <div className="flex justify-between items-center p-3 border-b border-border bg-muted/50">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" /> Game Chat
+            </h3>
+            <button 
+              onClick={() => setIsChatOpen(false)} 
+              className="hover:bg-muted/80 text-muted-foreground p-1 rounded-md transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
+             <p className="text-xs text-muted-foreground text-center bg-muted/50 py-1 rounded-full">
+               Chat started. Say hi!
+             </p>
+          </div>
+          <div className="p-3 border-t border-border bg-card">
+            <input 
+              type="text" 
+              placeholder="Type a message..." 
+              className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" 
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Game End Modal Popup */}
+      {showEndPopup && game?.status === 'finished' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center animate-in fade-in zoom-in duration-200">
+            <h2 className="text-2xl font-bold mb-2">Game Over</h2>
+            <p className="text-muted-foreground mb-8 font-medium">
+              {statusMessage(game)}
+            </p>
+            
+            <div className="flex flex-col gap-3">
+              <button className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                <RefreshCw className="w-5 h-5" /> Rematch
+              </button>
+              <button className="w-full py-3 bg-muted text-foreground rounded-lg font-bold hover:bg-muted/80 transition-colors flex items-center justify-center gap-2">
+                <PlusCircle className="w-5 h-5" /> New Game
+              </button>
+              <button
+                onClick={() => setShowEndPopup(false)}
+                className="w-full py-3 bg-transparent text-muted-foreground rounded-lg font-bold hover:bg-muted/50 transition-colors mt-2"
+              >
+                Close
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
     </div>
   );
 }
