@@ -47,17 +47,7 @@ async def lobby_websocket(
             msg_type = data.get("type", "")
             payload = data.get("payload") or {}
 
-            if msg_type == "lobby:chat":
-                text = str(payload.get("message", "")).strip()
-                if not text:
-                    continue
-                entry = await lobby_manager.add_chat(guest_id, text)
-                await lobby_manager.broadcast(
-                    "lobby:chat",
-                    lobby_manager.chat_to_dict(entry),
-                )
-
-            elif msg_type == "lobby:create_challenge":
+            if msg_type == "lobby:create_challenge":
                 tc = str(payload.get("timeControl", "5+0"))
                 side = str(payload.get("sidePreference", "random")).lower()
                 mode = str(payload.get("gameMode", "standard"))

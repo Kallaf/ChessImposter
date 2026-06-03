@@ -18,22 +18,12 @@ class Challenge:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-@dataclass
-class ChatMessage:
-    guest_id: str
-    display_name: str
-    message: str
-    sent_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-
-
 class LobbyManager:
     def __init__(self) -> None:
         self._connections: dict[str, WebSocket] = {}
         self._names: dict[str, str] = {}
         self._challenges: dict[str, Challenge] = {}
-        self._chat: list[ChatMessage] = []
         self._lock = asyncio.Lock()
-        self._max_chat = 100
 
     def register(self, guest_id: str, display_name: str, ws: WebSocket) -> None:
         self._connections[guest_id] = ws
@@ -71,19 +61,10 @@ class LobbyManager:
             "createdAt": c.created_at.isoformat(),
         }
 
-    def chat_to_dict(self, m: ChatMessage) -> dict[str, Any]:
-        return {
-            "guestId": m.guest_id,
-            "displayName": m.display_name,
-            "message": m.message,
-            "sentAt": m.sent_at.isoformat(),
-        }
-
     async def lobby_state_payload(self) -> dict[str, Any]:
         async with self._lock:
             return {
                 "challenges": [self.challenge_to_dict(c) for c in self._challenges.values()],
-                "chat": [self.chat_to_dict(m) for m in self._chat[-50:]],
                 "onlineCount": len(self._connections),
             }
 
@@ -116,18 +97,6 @@ class LobbyManager:
     async def get_challenge(self, challenge_id: str) -> Challenge | None:
         async with self._lock:
             return self._challenges.get(challenge_id)
-
-    async def add_chat(self, guest_id: str, message: str) -> ChatMessage:
-        async with self._lock:
-            entry = ChatMessage(
-                guest_id=guest_id,
-                display_name=self.get_name(guest_id),
-                message=message[:500],
-            )
-            self._chat.append(entry)
-            if len(self._chat) > self._max_chat:
-                self._chat = self._chat[-self._max_chat :]
-            return entry
 
 
 lobby_manager = LobbyManager()

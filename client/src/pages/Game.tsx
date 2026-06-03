@@ -16,6 +16,7 @@ import { useGameClock } from '../hooks/useGameClock';
 import { useGameSocket } from '../hooks/useGameSocket';
 import type { ThemeMode } from '../App';
 import type { GameState } from '../types/game';
+import { Crown, Moon, Sun } from 'lucide-react';
 
 const INITIAL_POSITION =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -296,16 +297,16 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     () =>
       theme === 'dark'
         ? {
-            darkSquare: '#1e293b',
-            lightSquare: '#f2eadc',
-            darkNotation: 'rgba(242, 234, 220, 0.72)',
-            lightNotation: 'rgba(30, 41, 59, 0.62)',
+            darkSquare: '#a0724d',
+            lightSquare: '#d9c5b0',
+            darkNotation: 'rgba(217, 197, 176, 0.72)',
+            lightNotation: 'rgba(160, 114, 77, 0.62)',
           }
         : {
-            darkSquare: '#64748b',
-            lightSquare: '#fff7ed',
-            darkNotation: 'rgba(255, 247, 237, 0.78)',
-            lightNotation: 'rgba(51, 65, 85, 0.58)',
+            darkSquare: '#a0724d',
+            lightSquare: '#f0d9b5',
+            darkNotation: 'rgba(240, 217, 181, 0.78)',
+            lightNotation: 'rgba(160, 114, 77, 0.58)',
           },
     [theme],
   );
@@ -493,183 +494,258 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
 
   if (!gameId) {
     return (
-      <div className="page">
-        <p>Invalid game</p>
-        <Link to="/">Back home</Link>
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg mb-4">Invalid game</p>
+          <Link to="/" className="text-primary hover:underline">
+            Back to Lobby
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="page game-page">
-      <header className="site-header row">
-        <div>
-          <Link to="/" className="back-link">
-            ← Lobby
-          </Link>
-          <h1>Chess Dashboard</h1>
-          {isTrueKing && <p className="mode-badge">True King mode</p>}
-        </div>
-        <div className="header-actions">
-          <button type="button" className="theme-toggle" onClick={onToggleTheme}>
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Header - Navbar */}
+      <header className="border-b border-border bg-card shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="text-primary hover:text-primary/80 transition-colors">
+              ← Back to Lobby
+            </Link>
+            {isTrueKing && (
+              <span className="text-xs font-medium px-2 py-1 bg-primary/10 text-primary rounded">
+                True King Mode
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onToggleTheme}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted hover:bg-accent transition-colors text-foreground"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-5 h-5" />
+            ) : (
+              <Moon className="w-5 h-5" />
+            )}
           </button>
-          <span className={`status-dot ${connected ? 'online' : 'offline'}`}>
-            {connected ? 'Connected' : 'Reconnecting...'}
-          </span>
         </div>
       </header>
 
-      <div className="game-layout">
-        <main className="board-stage" aria-label="Chess board">
-          <div className="board-meta">
-            <div>
-              <span className="eyebrow">Live board</span>
-              <h2>{game ? statusMessage(game) : 'Loading game...'}</h2>
-            </div>
-            {game?.yourColor && <span className="color-chip">{game.yourColor}</span>}
-          </div>
-
-          <div className="board-wrap">
-            <Chessboard
-              options={{
-                id: 'main-board',
-                position: boardPosition,
-                boardOrientation:
-                  game?.yourColor === 'black' ? 'black' : 'white',
-                boardStyle: {
-                  width: boardWidth,
-                  height: boardWidth,
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                  boxShadow:
-                    '0 30px 80px rgba(2, 6, 23, 0.48), 0 0 0 1px rgba(226, 232, 240, 0.12)',
-                },
-                darkSquareStyle: { backgroundColor: boardTheme.darkSquare },
-                lightSquareStyle: { backgroundColor: boardTheme.lightSquare },
-                darkSquareNotationStyle: {
-                  color: boardTheme.darkNotation,
-                },
-                lightSquareNotationStyle: {
-                  color: boardTheme.lightNotation,
-                },
-                dropSquareStyle: {
-                  boxShadow: 'inset 0 0 0 4px rgba(56, 189, 248, 0.75)',
-                },
-                squareStyles,
-                allowDragging: Boolean(canMove),
-                onPieceDrop: onDrop,
-                onSquareClick,
-              }}
-            />
-          </div>
-        </main>
-
-        <aside className="side-panel">
-          {game && (
-            <>
-              <section className="profile-card">
-                <div className="avatar" aria-hidden="true">
-                  {(game.yourDisplayName ?? 'G').slice(0, 1).toUpperCase()}
-                </div>
-                <div>
-                  <span className="eyebrow">You</span>
-                  <h2>{game.yourDisplayName ?? 'Guest'}</h2>
-                  <p>
-                    {game.yourColor ? `${game.yourColor} side` : 'Spectator'}
-                    {game.opponentDisplayName
-                      ? ` vs ${game.opponentDisplayName}`
-                      : ''}
-                  </p>
-                </div>
-              </section>
-
-              {game.timeControl && (
-                <section className="panel-block clock-panel">
-                  <h2>Clock · {game.timeControl}</h2>
-                  <div className="clock-row">
-                    <span>White</span>
-                    <strong
-                      className={
-                        clocks?.activeColor === 'white' ? 'clock-active' : ''
-                      }
-                    >
-                      {clockDisplay.white}
-                    </strong>
-                  </div>
-                  <div className="clock-row">
-                    <span>Black</span>
-                    <strong
-                      className={
-                        clocks?.activeColor === 'black' ? 'clock-active' : ''
-                      }
-                    >
-                      {clockDisplay.black}
-                    </strong>
-                  </div>
-                </section>
-              )}
-
-              <section className="panel-block room-panel">
-                <div>
-                  <h2>Room</h2>
-                  <p className="room-code">{game.roomCode}</p>
-                </div>
-                <button type="button" className="btn secondary" onClick={copyInvite}>
-                  Copy invite
-                </button>
-                {copyHint && <p className="hint">{copyHint}</p>}
-              </section>
-
-              <section className="panel-block">
-                <h2>Game status</h2>
-                <p className="status-text">{statusMessage(game)}</p>
-                {isTrueKing && trueKingHighlightSquare && game.status === 'active' && (
-                  <p className="hint">
-                    Your secret king piece is marked in gold and moves with that
-                    piece
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Board Section */}
+          <div className="lg:col-span-2">
+            <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
+              {/* Status Message */}
+              <div className="mb-6">
+                <h2 className="text-2xl font-semibold text-foreground">
+                  {game ? statusMessage(game) : 'Loading game...'}
+                </h2>
+                {game?.yourColor && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Playing as: <span className="font-medium capitalize">{game.yourColor}</span>
                   </p>
                 )}
-                {canStartGame && (
+              </div>
+
+              {/* Chessboard */}
+              <div className="flex justify-center mb-6">
+                <Chessboard
+                  options={{
+                    id: 'main-board',
+                    position: boardPosition,
+                    boardOrientation:
+                      game?.yourColor === 'black' ? 'black' : 'white',
+                    boardStyle: {
+                      width: boardWidth,
+                      height: boardWidth,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      boxShadow:
+                        '0 10px 30px rgba(0, 0, 0, 0.2)',
+                    },
+                    darkSquareStyle: { backgroundColor: boardTheme.darkSquare },
+                    lightSquareStyle: { backgroundColor: boardTheme.lightSquare },
+                    darkSquareNotationStyle: {
+                      color: boardTheme.darkNotation,
+                    },
+                    lightSquareNotationStyle: {
+                      color: boardTheme.lightNotation,
+                    },
+                    dropSquareStyle: {
+                      boxShadow: 'inset 0 0 0 4px rgba(186, 134, 97, 0.75)',
+                    },
+                    squareStyles,
+                    allowDragging: Boolean(canMove),
+                    onPieceDrop: onDrop,
+                    onSquareClick,
+                  }}
+                />
+              </div>
+
+              {/* Connection Status */}
+              <div className="flex items-center justify-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-sm text-muted-foreground">
+                  {connected ? 'Connected' : 'Reconnecting...'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Side Panel */}
+          <aside className="space-y-6">
+            {game && (
+              <>
+                {/* Player Info */}
+                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-lg font-semibold text-primary">
+                        {(game.yourDisplayName ?? 'G').slice(0, 1).toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">You</p>
+                      <h3 className="text-lg font-medium text-foreground">
+                        {game.yourDisplayName ?? 'Guest'}
+                      </h3>
+                      {game.opponentDisplayName && (
+                        <p className="text-sm text-muted-foreground">
+                          vs {game.opponentDisplayName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clock */}
+                {game.timeControl && (
+                  <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                    <h3 className="text-sm font-medium text-muted-foreground mb-4">
+                      Clock · {game.timeControl}
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">White</span>
+                        <span
+                          className={`text-xl font-mono font-semibold ${
+                            clocks?.activeColor === 'white'
+                              ? 'text-primary'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {clockDisplay.white}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Black</span>
+                        <span
+                          className={`text-xl font-mono font-semibold ${
+                            clocks?.activeColor === 'black'
+                              ? 'text-primary'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {clockDisplay.black}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Room Code */}
+                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Room</h3>
+                  <div className="font-mono text-sm bg-muted/30 rounded p-3 mb-3 text-foreground break-all">
+                    {game.roomCode}
+                  </div>
                   <button
                     type="button"
-                    className="btn primary start-game-btn"
-                    onClick={sendConfirmTrueKing}
+                    onClick={copyInvite}
+                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
                   >
-                    Start game
+                    Copy Invite
                   </button>
-                )}
-                {isTrueKing && inSetup && game.yourTrueKingReady && (
-                  <p className="hint">
-                    Your choice is locked in. Waiting for opponent...
-                  </p>
-                )}
-              </section>
-
-              <section className="panel-block moves-panel">
-                <div className="panel-heading">
-                  <h2>Move history</h2>
-                  <span>{moveHistory.length} moves</span>
+                  {copyHint && (
+                    <p className="text-xs text-green-600 mt-2 text-center">{copyHint}</p>
+                  )}
                 </div>
-                {moveHistory.length > 0 ? (
-                  <ol className="move-list">
-                    {moveHistory.map((move, i) => (
-                      <li key={`${i}-${game.moves[i]}`}>
-                        <span>{Math.floor(i / 2) + 1}</span>
-                        <strong>{move}</strong>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="empty-log">No moves yet</p>
-                )}
-              </section>
-            </>
-          )}
 
-          {!game && !error && <p>Loading game...</p>}
-          {error && <p className="banner error">{error}</p>}
-        </aside>
+                {/* Game Status & Actions */}
+                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Game Status</h3>
+                  <p className="text-foreground mb-4">{statusMessage(game)}</p>
+                  
+                  {isTrueKing && trueKingHighlightSquare && game.status === 'active' && (
+                    <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 mb-3">
+                      Your secret king piece is marked in gold
+                    </p>
+                  )}
+
+                  {canStartGame && (
+                    <button
+                      type="button"
+                      onClick={sendConfirmTrueKing}
+                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity font-medium"
+                    >
+                      Start Game
+                    </button>
+                  )}
+
+                  {isTrueKing && inSetup && game.yourTrueKingReady && (
+                    <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
+                      Your choice is locked in. Waiting for opponent...
+                    </p>
+                  )}
+                </div>
+
+                {/* Move History */}
+                <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-sm font-medium text-muted-foreground">
+                      Move History
+                    </h3>
+                    <span className="text-xs bg-muted text-muted-foreground rounded px-2 py-1">
+                      {moveHistory.length} moves
+                    </span>
+                  </div>
+                  {moveHistory.length > 0 ? (
+                    <ol className="space-y-1 text-sm max-h-64 overflow-y-auto">
+                      {moveHistory.map((move, i) => (
+                        <li key={`${i}-${game.moves[i]}`} className="flex gap-2">
+                          <span className="text-muted-foreground font-medium min-w-6">
+                            {Math.floor(i / 2) + 1}.
+                          </span>
+                          <span className="font-mono text-foreground">{move}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No moves yet
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!game && !error && (
+              <div className="bg-card border border-border rounded-xl p-6 shadow-sm text-center">
+                <p className="text-muted-foreground">Loading game...</p>
+              </div>
+            )}
+            {error && (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-6 shadow-sm">
+                <p className="text-destructive">{error}</p>
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDisplayName, getGuestId } from '../lib/guest';
-import type { Challenge, LobbyChatMessage } from '../types/protocol';
+import type { Challenge } from '../types/protocol';
 import { wsBaseUrl } from '../lib/wsUrl';
 
 const MAX_RECONNECT = 10000;
@@ -8,7 +8,6 @@ const MAX_RECONNECT = 10000;
 export function useLobbySocket(enabled: boolean) {
   const [connected, setConnected] = useState(false);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [chat, setChat] = useState<LobbyChatMessage[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -35,7 +34,6 @@ export function useLobbySocket(enabled: boolean) {
         switch (data.type) {
           case 'lobby:state':
             setChallenges((p.challenges as Challenge[]) ?? []);
-            setChat((p.chat as LobbyChatMessage[]) ?? []);
             setOnlineCount((p.onlineCount as number) ?? 0);
             break;
           case 'lobby:challenge_created':
@@ -45,9 +43,6 @@ export function useLobbySocket(enabled: boolean) {
             setChallenges((prev) =>
               prev.filter((c) => c.challengeId !== (p.challengeId as string)),
             );
-            break;
-          case 'lobby:chat':
-            setChat((prev) => [...prev.slice(-49), p as unknown as LobbyChatMessage]);
             break;
           case 'lobby:presence':
             setOnlineCount((p.onlineCount as number) ?? 0);
@@ -97,11 +92,6 @@ export function useLobbySocket(enabled: boolean) {
     ws.send(JSON.stringify({ type, payload }));
   }, []);
 
-  const sendChat = useCallback(
-    (message: string) => send('lobby:chat', { message }),
-    [send],
-  );
-
   const createChallenge = useCallback(
     (
       timeControl: string,
@@ -128,10 +118,8 @@ export function useLobbySocket(enabled: boolean) {
   return {
     connected,
     challenges,
-    chat,
     onlineCount,
     error,
-    sendChat,
     createChallenge,
     joinChallenge,
     cancelChallenge,

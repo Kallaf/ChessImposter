@@ -17,16 +17,8 @@ export interface Challenge {
   createdAt: string;
 }
 
-export interface LobbyChatMessage {
-  guestId: string;
-  displayName: string;
-  message: string;
-  sentAt: string;
-}
-
 export interface LobbyState {
   challenges: Challenge[];
-  chat: LobbyChatMessage[];
   onlineCount: number;
 }
 
