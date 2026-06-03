@@ -12,7 +12,7 @@ function App() {
   const [identityReady, setIdentityReady] = useState(hasIdentity);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const savedTheme = window.localStorage.getItem('theme');
-    return savedTheme === 'light' ? 'light' : 'dark';
+    return savedTheme === 'dark' ? 'dark' : 'light';
   });
 
   useEffect(() => {
@@ -27,7 +27,7 @@ function App() {
   const toggleTheme = () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
 
   if (!identityReady) {
-    return <GuestGate onReady={() => setIdentityReady(true)} />;
+    return <GuestGate  theme={theme} onToggleTheme={toggleTheme} onReady={() => setIdentityReady(true)} />;
   }
 
   return (
