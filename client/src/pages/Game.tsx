@@ -539,9 +539,9 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Board Section */}
           <div className="lg:col-span-2">
-            <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
               {/* Status Message */}
-              <div className="mb-6">
+              <div className="p-4 sm:p-8 pb-6">
                 <h2 className="text-2xl font-semibold text-foreground">
                   {game ? statusMessage(game) : 'Loading game...'}
                 </h2>
@@ -552,8 +552,8 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
                 )}
               </div>
 
-              {/* Chessboard */}
-              <div className="flex justify-center mb-6">
+              {/* Chessboard - Full Width Container */}
+              <div className="flex justify-center items-center bg-background/50 p-4 sm:p-6">
                 <Chessboard
                   options={{
                     id: 'main-board',
@@ -561,8 +561,9 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
                     boardOrientation:
                       game?.yourColor === 'black' ? 'black' : 'white',
                     boardStyle: {
-                      width: boardWidth,
-                      height: boardWidth,
+                      width: '100%',
+                      maxWidth: boardWidth,
+                      aspectRatio: '1',
                       borderRadius: 12,
                       overflow: 'hidden',
                       boxShadow:
@@ -588,7 +589,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
               </div>
 
               {/* Connection Status */}
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2 p-4 sm:p-8 pt-6 border-t border-border">
                 <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
                 <span className="text-sm text-muted-foreground">
                   {connected ? 'Connected' : 'Reconnecting...'}
