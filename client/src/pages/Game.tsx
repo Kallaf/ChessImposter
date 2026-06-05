@@ -204,23 +204,43 @@ function lastMoveSquares(moves: string[]): string[] {
 
 type SoundType = 'capture' | 'castle' | 'game-end' | 'game-start' | 'illegal' | 'move-check' | 'move-opponent' | 'move-self' | 'notify' | 'premove' | 'promote' | 'tenseconds';
 
+const audioMap: Record<SoundType, string> = {
+  capture: '/sounds/capture.mp3',
+  castle: '/sounds/castle.mp3',
+  'game-end': '/sounds/game-end.mp3',
+  'game-start': '/sounds/game-start.mp3',
+  illegal: '/sounds/illegal.mp3',
+  'move-check': '/sounds/move-check.mp3',
+  'move-opponent': '/sounds/move-opponent.mp3',
+  'move-self': '/sounds/move-self.mp3',
+  notify: '/sounds/notify.mp3',
+  premove: '/sounds/premove.mp3',
+  promote: '/sounds/promote.mp3',
+  tenseconds: '/sounds/tenseconds.mp3'
+};
+
+// 1. Create a persistent cache for our audio elements
+const audioCache: Partial<Record<SoundType, HTMLAudioElement>> = {};
+let audioUnlocked = false;
+
+// 2. Pre-load them immediately into the browser's memory
+if (typeof window !== 'undefined') {
+  Object.entries(audioMap).forEach(([key, path]) => {
+    const audio = new Audio(path);
+    audio.preload = 'auto'; // Force browser to fetch the file
+    audioCache[key as SoundType] = audio;
+  });
+}
+
+// 3. Updated play function that reuses the elements
 const playSound = (type: SoundType) => {
-  const audioMap: Record<SoundType, string> = {
-    capture: '/sounds/capture.mp3',
-    castle: '/sounds/castle.mp3',
-    'game-end': '/sounds/game-end.mp3',
-    'game-start': '/sounds/game-start.mp3',
-    illegal: '/sounds/illegal.mp3',
-    'move-check': '/sounds/move-check.mp3',
-    'move-opponent': '/sounds/move-opponent.mp3',
-    'move-self': '/sounds/move-self.mp3',
-    notify: '/sounds/notify.mp3',
-    premove: '/sounds/premove.mp3',
-    promote: '/sounds/promote.mp3',
-    tenseconds: '/sounds/tenseconds.mp3'
-  };
-  const audio = new Audio(audioMap[type]);
-  audio.play().catch((e) => console.log('Audio playback prevented by browser:', e));
+  const audio = audioCache[type];
+  if (audio) {
+    audio.currentTime = 0; // Rewind to start so rapid moves don't clip
+    audio.play().catch((e) => {
+      console.warn(`Audio blocked (${type}):`, e.message);
+    });
+  }
 };
 
 type GameProps = {
@@ -247,6 +267,36 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
 
   const [selectedSquareState, setSelectedSquareState] =
     useState<SelectedSquareState | null>(null);
+
+  // --- Add this block inside export default function Game(...) ---
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioUnlocked) return;
+      
+      // Play and immediately pause all audio to "unlock" them on iOS/Android
+      Object.values(audioCache).forEach(audio => {
+        if (audio) {
+          audio.play().then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          }).catch(() => { /* Ignore errors during silent unlock */ });
+        }
+      });
+      
+      audioUnlocked = true;
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('click', unlockAudio);
+    };
+
+    // Listen for the first physical interaction
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('click', unlockAudio, { once: true });
+
+    return () => {
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('click', unlockAudio);
+    };
+  }, []);
 
   useEffect(() => {
     if (!game) return;
