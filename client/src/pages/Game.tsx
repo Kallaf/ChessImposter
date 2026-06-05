@@ -202,11 +202,22 @@ function lastMoveSquares(moves: string[]): string[] {
   return [lastMove.slice(0, 2), lastMove.slice(2, 4)];
 }
 
-const playSound = (type: 'move' | 'start' | 'end') => {
-  const audioMap = {
-    move: '/sounds/move.mp3',
-    start: '/sounds/game-start.mp3',
-    end: '/sounds/game-end.mp3'
+type SoundType = 'capture' | 'castle' | 'game-end' | 'game-start' | 'illegal' | 'move-check' | 'move-opponent' | 'move-self' | 'notify' | 'premove' | 'promote' | 'tenseconds';
+
+const playSound = (type: SoundType) => {
+  const audioMap: Record<SoundType, string> = {
+    capture: '/sounds/capture.mp3',
+    castle: '/sounds/castle.mp3',
+    'game-end': '/sounds/game-end.mp3',
+    'game-start': '/sounds/game-start.mp3',
+    illegal: '/sounds/illegal.mp3',
+    'move-check': '/sounds/move-check.mp3',
+    'move-opponent': '/sounds/move-opponent.mp3',
+    'move-self': '/sounds/move-self.mp3',
+    notify: '/sounds/notify.mp3',
+    premove: '/sounds/premove.mp3',
+    promote: '/sounds/promote.mp3',
+    tenseconds: '/sounds/tenseconds.mp3'
   };
   const audio = new Audio(audioMap[type]);
   audio.play().catch((e) => console.log('Audio playback prevented by browser:', e));
@@ -232,6 +243,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
   
   const previousMoveCount = useRef(0);
   const previousStatus = useRef<string | null>(null);
+  const previousFen = useRef<string>(INITIAL_POSITION);
 
   const [selectedSquareState, setSelectedSquareState] =
     useState<SelectedSquareState | null>(null);
@@ -239,19 +251,59 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
   useEffect(() => {
     if (!game) return;
 
-    if (game.moves && game.moves.length > previousMoveCount.current) {
-      playSound('move');
-      previousMoveCount.current = game.moves.length;
-    }
-
     if (game.status !== previousStatus.current) {
       if (game.status === 'active') {
-        playSound('start');
+        playSound('game-start');
       } else if (game.status === 'finished') {
-        playSound('end');
+        playSound('game-end');
         setShowEndPopup(true);
       }
       previousStatus.current = game.status;
+    }
+
+    if (game.moves && game.moves.length > previousMoveCount.current) {
+      const isTrueKingMode = game.gameMode === 'true_king';
+      const isMyTurnNow = game.turn === game.yourColor;
+      const baseMoveSound = isMyTurnNow ? 'move-opponent' : 'move-self';
+
+      if (!isTrueKingMode && previousFen.current) {
+        try {
+          const tempChess = new Chess(previousFen.current);
+          const lastMoveUci = game.moves[game.moves.length - 1]; 
+          
+          const from = lastMoveUci.slice(0, 2) as Square;
+          const to = lastMoveUci.slice(2, 4) as Square;
+          const promotion = lastMoveUci[4];
+
+          const moveDetails = tempChess.move({ from, to, promotion });
+
+          if (moveDetails) {
+            if (tempChess.isCheck()) {
+              playSound('move-check');
+            } else if (moveDetails.promotion) {
+              playSound('promote');
+            } else if (moveDetails.captured) {
+              playSound('capture');
+            } else if (moveDetails.flags.includes('k') || moveDetails.flags.includes('q')) {
+              playSound('castle');
+            } else {
+              playSound(baseMoveSound);
+            }
+          } else {
+            playSound(baseMoveSound); 
+          }
+        } catch (error) {
+          playSound(baseMoveSound); 
+        }
+      } else {
+        playSound(baseMoveSound);
+      }
+
+      previousMoveCount.current = game.moves.length;
+    }
+
+    if (game.fen) {
+      previousFen.current = game.fen;
     }
   }, [game]);
 
@@ -442,7 +494,10 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     ({ sourceSquare, targetSquare }: { piece: { pieceType: string }; sourceSquare: string; targetSquare: string | null; }) => {
       if (!canMove || !targetSquare) return false;
       const uci = tryMove(sourceSquare, targetSquare);
-      if (!uci) return false;
+      if (!uci) {
+        playSound('illegal');
+        return false;
+      }
       setSelectedSquareState(null);
       sendMove(uci);
       return true;
@@ -469,6 +524,8 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
         if (uci) {
           setSelectedSquareState(null);
           sendMove(uci);
+        } else {
+          playSound('illegal');
         }
         return;
       }
