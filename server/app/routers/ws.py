@@ -85,6 +85,22 @@ async def game_websocket(
                     await broadcast_full_state(game_id)
                 except ValueError as e:
                     await _send_error(websocket, str(e))
+            
+            # --- NEW: Handle Resign ---
+            elif msg_type in ("resign", "game:resign"):
+                try:
+                    await game_service.end_game(game_id, guest_id, "resign")
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
+
+            # --- NEW: Handle Abort ---
+            elif msg_type in ("abort", "game:abort"):
+                try:
+                    await game_service.end_game(game_id, guest_id, "abort")
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
 
             else:
                 await _send_error(websocket, f"Unknown message type: {msg_type}")
@@ -94,6 +110,7 @@ async def game_websocket(
     finally:
         room_empty = remove_connection(game_id, websocket)
         if room_empty:
-            await game_service.mark_abandoned(game_id, guest_id)
+            # --- UPDATED: Call the new end_game function for abandonments ---
+            await game_service.end_game(game_id, guest_id, "abandoned")
         else:
             await broadcast_full_state(game_id)

@@ -141,6 +141,17 @@ export function useGameSocket(gameId: string | undefined) {
     [send],
   );
 
+  const abort = useCallback(
+    () => send('abort', {}),
+    [send],
+  );
+
+  
+  const resign = useCallback(
+    () => send('resign', {}),
+    [send],
+  );
+
   return {
     game,
     clocks,
@@ -149,6 +160,8 @@ export function useGameSocket(gameId: string | undefined) {
     sendMove,
     sendTrueKing,
     sendConfirmTrueKing,
+    abort,
+    resign,
     resync,
   };
 }

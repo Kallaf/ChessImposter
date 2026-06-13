@@ -287,28 +287,43 @@ async def apply_game_move(game_id: str, guest_id: str, uci: str):
     return doc_to_response(doc, guest_id)
 
 
-async def mark_abandoned(game_id: str, guest_id: str) -> None:
+async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
     doc = await get_game_doc(game_id)
     if not doc or doc.get("status") not in (
         GameStatus.ACTIVE.value,
         GameStatus.SETUP.value,
     ):
         return
+        
     white_id = doc.get("whiteGuestId")
     black_id = doc.get("blackGuestId")
     if guest_id not in (white_id, black_id):
         return
 
-    winner = GameResult.BLACK.value if guest_id == white_id else GameResult.WHITE.value
     now = _utcnow()
+    update_data = {
+        "status": GameStatus.FINISHED.value,
+        "updatedAt": now,
+        "resultReason": end_game_type
+    }
+
+    # Determine the result based on the end_game_type
+    if end_game_type in ("abandoned", "resign"):
+        # The user who triggered this loses.
+        winner = GameResult.BLACK.value if guest_id == white_id else GameResult.WHITE.value
+        update_data["result"] = winner
+    elif end_game_type == "abort":
+        # Aborting usually cancels the game without a winner. 
+        # Update this to GameResult.ABORTED.value if your enum has it.
+        update_data["result"] = GameResult.DRAW.value
+    else:
+        # Failsafe for unknown end_game types
+        return
+
     db = get_database()
     await db.games.update_one(
         {"gameId": game_id},
         {
-            "$set": {
-                "status": GameStatus.FINISHED.value,
-                "result": winner,
-                "updatedAt": now,
-            }
+            "$set": update_data
         },
     )

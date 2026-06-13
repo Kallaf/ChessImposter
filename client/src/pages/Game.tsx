@@ -37,7 +37,7 @@ type GameProps = {
 
 export default function Game({ theme, onToggleTheme }: GameProps) {
   const { gameId } = useParams<{ gameId: string }>();
-  const { game, clocks, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing } = useGameSocket(gameId);
+  const { game, clocks, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing, abort, resign } = useGameSocket(gameId);
   const clockDisplay = useGameClock(clocks ?? game?.clocks ?? null, game?.status === 'active');
   
   const [boardWidth, setBoardWidth] = useState(480);
@@ -303,7 +303,9 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
 
             <GameControls 
               status={game.status} 
-              canAbort={canAbort} 
+              canAbort={canAbort}
+              onAbort={abort}
+              onResign={resign}
               canStartGame={canStartGame} 
               isChatOpen={isChatOpen} 
               onToggleChat={() => setIsChatOpen(!isChatOpen)} 
