@@ -286,6 +286,35 @@ async def apply_game_move(game_id: str, guest_id: str, uci: str):
     doc = await db.games.find_one({"gameId": game_id})
     return doc_to_response(doc, guest_id)
 
+async def request_draw(game_id: str, guest_id: str) -> None:
+    db = get_database()
+    # Mark that this specific guest_id has offered a draw
+    await db.games.update_one(
+        {"gameId": game_id, "status": GameStatus.ACTIVE.value},
+        {"$set": {"drawOffer": guest_id}}
+    )
+
+async def reject_draw(game_id: str, guest_id: str) -> None:
+    db = get_database()
+    # Remove the draw offer from the document
+    await db.games.update_one(
+        {"gameId": game_id},
+        {"$unset": {"drawOffer": ""}}
+    )
+
+async def accept_draw(game_id: str, guest_id: str) -> None:
+    doc = await get_game_doc(game_id)
+    if not doc:
+        raise ValueError("Game not found")
+        
+    draw_offer = doc.get("drawOffer")
+    
+    # Validate that an offer exists and that the player accepting is NOT the one who offered
+    if not draw_offer or draw_offer == guest_id:
+        raise ValueError("No valid draw offer to accept")
+        
+    await end_game(game_id, guest_id, "draw")
+
 
 async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
     doc = await get_game_doc(game_id)
@@ -304,7 +333,8 @@ async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
     update_data = {
         "status": GameStatus.FINISHED.value,
         "updatedAt": now,
-        "resultReason": end_game_type
+        "resultReason": end_game_type,
+        "drawOffer": None,  # Clear any existing draw offer
     }
 
     # Determine the result based on the end_game_type
@@ -312,7 +342,7 @@ async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
         # The user who triggered this loses.
         winner = GameResult.BLACK.value if guest_id == white_id else GameResult.WHITE.value
         update_data["result"] = winner
-    elif end_game_type == "abort":
+    elif end_game_type in ("abort", "draw"):
         # Aborting usually cancels the game without a winner. 
         # Update this to GameResult.ABORTED.value if your enum has it.
         update_data["result"] = GameResult.DRAW.value

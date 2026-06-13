@@ -85,8 +85,7 @@ async def game_websocket(
                     await broadcast_full_state(game_id)
                 except ValueError as e:
                     await _send_error(websocket, str(e))
-            
-            # --- NEW: Handle Resign ---
+
             elif msg_type in ("resign", "game:resign"):
                 try:
                     await game_service.end_game(game_id, guest_id, "resign")
@@ -94,10 +93,30 @@ async def game_websocket(
                 except ValueError as e:
                     await _send_error(websocket, str(e))
 
-            # --- NEW: Handle Abort ---
             elif msg_type in ("abort", "game:abort"):
                 try:
                     await game_service.end_game(game_id, guest_id, "abort")
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
+
+            elif msg_type in ("request_draw", "game:request_draw"):
+                try:
+                    await game_service.request_draw(game_id, guest_id)
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
+                    
+            elif msg_type in ("reject_draw", "game:reject_draw"):
+                try:
+                    await game_service.reject_draw(game_id, guest_id)
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
+
+            elif msg_type in ("accept_draw", "game:accept_draw"):
+                try:
+                    await game_service.accept_draw(game_id, guest_id)
                     await broadcast_full_state(game_id)
                 except ValueError as e:
                     await _send_error(websocket, str(e))

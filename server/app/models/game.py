@@ -61,6 +61,7 @@ class GameResponse(BaseModel):
     moves: list[str]
     status: GameStatus
     result: GameResult | None = None
+    draw_offer: str | None = Field(None, alias="drawOffer")
     turn: Literal["white", "black"] | None = None
     your_color: Literal["white", "black"] | None = Field(None, alias="yourColor")
     your_true_king_square: str | None = Field(None, alias="yourTrueKingSquare")
@@ -150,6 +151,7 @@ def doc_to_response(doc: dict, guest_id: str | None = None) -> GameResponse:
         moves=doc.get("moves", []),
         status=status,
         result=doc.get("result"),
+        drawOffer=doc.get("drawOffer"),
         turn=turn,
         yourColor=your_color,
         yourTrueKingSquare=your_true_king,

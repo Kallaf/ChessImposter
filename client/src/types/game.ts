@@ -13,6 +13,7 @@ export interface GameState {
   moves: string[];
   status: GameStatus;
   result: GameResult | null;
+  drawOffer: string | null;
   turn: PieceColor | null;
   yourColor: PieceColor | null;
   yourTrueKingSquare: string | null;

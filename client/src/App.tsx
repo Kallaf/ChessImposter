@@ -5,6 +5,7 @@ import Game from './pages/Game';
 import Lobby from './pages/Lobby';
 import { hasIdentity } from './lib/guest';
 import './App.css';
+import { NotificationProvider } from './context/NotificationContext';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -31,19 +32,21 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={<Lobby theme={theme} onToggleTheme={toggleTheme} />}
-        />
-        <Route
-          path="/game/:gameId"
-          element={<Game theme={theme} onToggleTheme={toggleTheme} />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <NotificationProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={<Lobby theme={theme} onToggleTheme={toggleTheme} />}
+          />
+          <Route
+            path="/game/:gameId"
+            element={<Game theme={theme} onToggleTheme={toggleTheme} />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </NotificationProvider>
   );
 }
 

@@ -4,6 +4,7 @@ import { getGuestId } from '../lib/guest';
 import { wsBaseUrl } from '../lib/wsUrl';
 import type { GameState } from '../types/game';
 import type { ClockSync, GameStatePayload } from '../types/protocol';
+import { useNotification } from '../context/NotificationContext';
 
 const MAX_RECONNECT_DELAY = 10000;
 
@@ -16,6 +17,9 @@ export function useGameSocket(gameId: string | undefined) {
   const reconnectAttempt = useRef(0);
   const mountedRef = useRef(true);
   const connectRef = useRef<() => void>(() => {});
+  
+  const { showNotification, hideNotification } =
+    useNotification();
 
   const applyPayload = useCallback((payload: GameStatePayload) => {
     setGame(payload.game);
@@ -62,7 +66,9 @@ export function useGameSocket(gameId: string | undefined) {
         };
 
         if (data.type === 'game:state' && data.payload) {
-          applyPayload(data.payload as GameStatePayload);
+          const payload = data.payload as GameStatePayload;
+          applyPayload(payload);
+          handleDrawOfferUi(payload.game, getGuestId());
         } else if (data.type === 'game:time_sync' && data.payload) {
           setClocks(data.payload as ClockSync);
         } else if (data.type === 'game:timeout' && data.payload) {
@@ -152,6 +158,88 @@ export function useGameSocket(gameId: string | undefined) {
     [send],
   );
 
+  const sendDrawOffer = useCallback(
+    () => send('request_draw', {}),
+    [send],
+  );
+
+  const rejectDrawOffer = useCallback(
+    () => send('reject_draw', {}),
+    [send],
+  );
+
+  const acceptDrawOffer = useCallback(
+    () => send('accept_draw', {}),
+    [send],
+  );
+
+  
+  const offerDraw = () => {
+    showNotification({
+      title: "Offer Draw",
+      description: "Do you want to offer a draw?",
+      icon: "🤝",
+      actions: [
+        {
+          label: "Cancel",
+          variant: "secondary",
+          onClick: hideNotification,
+        },
+        {
+          label: "Offer",
+          variant: "primary",
+          onClick: () => {
+            sendDrawOffer();
+            hideNotification();
+          },
+        },
+      ],
+    });
+  };
+
+const handleDrawOfferUi = (gameStatus: any, currentGuestId: string) => {
+  const drawOffer = gameStatus.drawOffer;
+  // Scenario 1: There is no active draw offer
+  if (!drawOffer) {
+    return;
+  }
+
+  // Scenario 2: YOU are the one who made the draw offer
+  if (drawOffer === currentGuestId) {
+    // Optional: Show a passive "Draw offer sent" banner/spinner on your UI
+    // Do NOT show the accept/reject notification to yourself
+    return;
+  }
+
+  // Scenario 3: The OPPONENT offered a draw, and you haven't responded yet
+  if (drawOffer !== currentGuestId) {
+    showNotification({
+      title: "Draw Offer",
+      description: "Your opponent offered a draw.",
+      icon: "🤝",
+      actions: [
+        {
+          label: "Reject",
+          variant: "danger",
+          onClick: () => {
+            // Send the WS message to backend
+            rejectDrawOffer();
+            hideNotification();
+          },
+        },
+        {
+          label: "Accept",
+          variant: "success",
+          onClick: () => {
+            acceptDrawOffer();
+            hideNotification();
+          },
+        },
+      ],
+    });
+  }
+}
+
   return {
     game,
     clocks,
@@ -163,5 +251,6 @@ export function useGameSocket(gameId: string | undefined) {
     abort,
     resign,
     resync,
+    offerDraw
   };
 }

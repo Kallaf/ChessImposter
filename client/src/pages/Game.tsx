@@ -29,6 +29,7 @@ import { ChatWindow } from '../components/game/ChatWindow';
 import { GameOverModal } from '../components/game/GameOverModal';
 
 import type { ThemeMode } from '../App';
+import { useNotification } from '../context/NotificationContext';
 
 type GameProps = {
   theme: ThemeMode;
@@ -37,7 +38,18 @@ type GameProps = {
 
 export default function Game({ theme, onToggleTheme }: GameProps) {
   const { gameId } = useParams<{ gameId: string }>();
-  const { game, clocks, connected, error, sendMove, sendTrueKing, sendConfirmTrueKing, abort, resign } = useGameSocket(gameId);
+  const { 
+    game, 
+    clocks,
+    connected,
+    error,
+    sendMove,
+    sendTrueKing,
+    sendConfirmTrueKing,
+    abort,
+    resign,
+    offerDraw, 
+  } = useGameSocket(gameId);
   const clockDisplay = useGameClock(clocks ?? game?.clocks ?? null, game?.status === 'active');
   
   const [boardWidth, setBoardWidth] = useState(480);
@@ -309,6 +321,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
               canStartGame={canStartGame} 
               isChatOpen={isChatOpen} 
               onToggleChat={() => setIsChatOpen(!isChatOpen)} 
+              onDraw={offerDraw}
               onStartGame={sendConfirmTrueKing} 
             />
 
