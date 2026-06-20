@@ -10,7 +10,7 @@ type GameOverModalProps = {
   message: string;
   onClose: () => void;
   onRematch?: () => void;
-  currentGame?: GameState;
+  currentGame?: GameState | null;
 };
 
 type PendingAction = 'none' | 'rematch' | 'new-game';

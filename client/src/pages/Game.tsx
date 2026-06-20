@@ -47,7 +47,8 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
     sendConfirmTrueKing,
     abort,
     resign,
-    offerDraw, 
+    offerDraw,
+    offerRematch,
   } = useGameSocket(gameId);
   const clockDisplay = useGameClock(clocks ?? game?.clocks ?? null, game?.status === 'active');
   
@@ -338,6 +339,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
         message={game ? statusMessage(game) : ''} 
         onClose={() => setShowEndPopup(false)}
         currentGame={game} 
+        onRematch={offerRematch}
       />
     </div>
   );

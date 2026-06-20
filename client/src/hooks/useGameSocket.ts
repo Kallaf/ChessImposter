@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchGame } from '../lib/api';
 import { getGuestId } from '../lib/guest';
 import { wsBaseUrl } from '../lib/wsUrl';
+import { useGameOffers } from './useGameOffers'; // Import the new hook
 import type { GameState } from '../types/game';
 import type { ClockSync, GameStatePayload } from '../types/protocol';
-import { useNotification } from '../context/NotificationContext';
 
 const MAX_RECONNECT_DELAY = 10000;
 
@@ -13,14 +13,47 @@ export function useGameSocket(gameId: string | undefined) {
   const [clocks, setClocks] = useState<ClockSync | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const mountedRef = useRef(true);
   const connectRef = useRef<() => void>(() => {});
-  
-  const { showNotification, hideNotification } =
-    useNotification();
 
+  // --- WebSocket Transmission Methods ---
+  const send = useCallback((type: string, payload: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setError('Not connected');
+      return;
+    }
+    ws.send(JSON.stringify({ type, payload }));
+  }, []);
+
+  const sendMove = useCallback((uci: string) => send('game:move', { uci }), [send]);
+  const sendTrueKing = useCallback((square: string) => send('set_true_king', { square }), [send]);
+  const sendConfirmTrueKing = useCallback(() => send('confirm_true_king', {}), [send]);
+  const abort = useCallback(() => send('abort', {}), [send]);
+  const resign = useCallback(() => send('resign', {}), [send]);
+
+  // Offer specific transmissions
+  const sendDrawOffer = useCallback(() => send('request_draw', {}), [send]);
+  const rejectDrawOffer = useCallback(() => send('reject_draw', {}), [send]);
+  const acceptDrawOffer = useCallback(() => send('accept_draw', {}), [send]);
+  const sendRematchOffer = useCallback(() => send('request_rematch', {}), [send]);
+  const rejectRematchOffer = useCallback(() => send('reject_rematch', {}), [send]);
+  const acceptRematchOffer = useCallback(() => send('accept_rematch', {}), [send]);
+
+  // --- Initialize UI Offer Handler ---
+  const { handleOffers, promptDrawOffer, promptRematchOffer } = useGameOffers({
+    sendDrawOffer,
+    acceptDrawOffer,
+    rejectDrawOffer,
+    sendRematchOffer,
+    acceptRematchOffer,
+    rejectRematchOffer
+  });
+
+  // --- Core State Updates ---
   const applyPayload = useCallback((payload: GameStatePayload) => {
     setGame(payload.game);
     if (payload.clocks) setClocks(payload.clocks);
@@ -41,6 +74,7 @@ export function useGameSocket(gameId: string | undefined) {
     }
   }, [gameId]);
 
+  // --- Connection Logic ---
   const connect = useCallback(() => {
     if (!gameId) return;
 
@@ -68,7 +102,7 @@ export function useGameSocket(gameId: string | undefined) {
         if (data.type === 'game:state' && data.payload) {
           const payload = data.payload as GameStatePayload;
           applyPayload(payload);
-          handleDrawOfferUi(payload.game, getGuestId());
+          handleOffers(payload.game, getGuestId()); 
         } else if (data.type === 'game:time_sync' && data.payload) {
           setClocks(data.payload as ClockSync);
         } else if (data.type === 'game:timeout' && data.payload) {
@@ -90,10 +124,7 @@ export function useGameSocket(gameId: string | undefined) {
       if (!mountedRef.current) return;
       setConnected(false);
       wsRef.current = null;
-      const delay = Math.min(
-        1000 * 2 ** reconnectAttempt.current,
-        MAX_RECONNECT_DELAY,
-      );
+      const delay = Math.min(1000 * 2 ** reconnectAttempt.current, MAX_RECONNECT_DELAY);
       reconnectAttempt.current += 1;
       window.setTimeout(() => {
         if (mountedRef.current && gameId) connectRef.current();
@@ -103,7 +134,7 @@ export function useGameSocket(gameId: string | undefined) {
     ws.onerror = () => {
       if (mountedRef.current) setError('Connection error');
     };
-  }, [gameId, applyPayload, resync]);
+  }, [gameId, applyPayload, resync, handleOffers]);
 
   useEffect(() => {
     connectRef.current = connect;
@@ -123,123 +154,6 @@ export function useGameSocket(gameId: string | undefined) {
     };
   }, [gameId, connect, resync]);
 
-  const send = useCallback((type: string, payload: Record<string, unknown>) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setError('Not connected');
-      return;
-    }
-    ws.send(JSON.stringify({ type, payload }));
-  }, []);
-
-  const sendMove = useCallback(
-    (uci: string) => send('game:move', { uci }),
-    [send],
-  );
-
-  const sendTrueKing = useCallback(
-    (square: string) => send('set_true_king', { square }),
-    [send],
-  );
-
-  const sendConfirmTrueKing = useCallback(
-    () => send('confirm_true_king', {}),
-    [send],
-  );
-
-  const abort = useCallback(
-    () => send('abort', {}),
-    [send],
-  );
-
-  
-  const resign = useCallback(
-    () => send('resign', {}),
-    [send],
-  );
-
-  const sendDrawOffer = useCallback(
-    () => send('request_draw', {}),
-    [send],
-  );
-
-  const rejectDrawOffer = useCallback(
-    () => send('reject_draw', {}),
-    [send],
-  );
-
-  const acceptDrawOffer = useCallback(
-    () => send('accept_draw', {}),
-    [send],
-  );
-
-  
-  const offerDraw = () => {
-    showNotification({
-      title: "Offer Draw",
-      description: "Do you want to offer a draw?",
-      icon: "🤝",
-      actions: [
-        {
-          label: "Cancel",
-          variant: "secondary",
-          onClick: hideNotification,
-        },
-        {
-          label: "Offer",
-          variant: "primary",
-          onClick: () => {
-            sendDrawOffer();
-            hideNotification();
-          },
-        },
-      ],
-    });
-  };
-
-const handleDrawOfferUi = (gameStatus: any, currentGuestId: string) => {
-  const drawOffer = gameStatus.drawOffer;
-  // Scenario 1: There is no active draw offer
-  if (!drawOffer) {
-    return;
-  }
-
-  // Scenario 2: YOU are the one who made the draw offer
-  if (drawOffer === currentGuestId) {
-    // Optional: Show a passive "Draw offer sent" banner/spinner on your UI
-    // Do NOT show the accept/reject notification to yourself
-    return;
-  }
-
-  // Scenario 3: The OPPONENT offered a draw, and you haven't responded yet
-  if (drawOffer !== currentGuestId) {
-    showNotification({
-      title: "Draw Offer",
-      description: "Your opponent offered a draw.",
-      icon: "🤝",
-      actions: [
-        {
-          label: "Reject",
-          variant: "danger",
-          onClick: () => {
-            // Send the WS message to backend
-            rejectDrawOffer();
-            hideNotification();
-          },
-        },
-        {
-          label: "Accept",
-          variant: "success",
-          onClick: () => {
-            acceptDrawOffer();
-            hideNotification();
-          },
-        },
-      ],
-    });
-  }
-}
-
   return {
     game,
     clocks,
@@ -251,6 +165,7 @@ const handleDrawOfferUi = (gameStatus: any, currentGuestId: string) => {
     abort,
     resign,
     resync,
-    offerDraw
+    offerDraw: promptDrawOffer,       // Exported prompt action
+    offerRematch: promptRematchOffer  // Exported prompt action
   };
 }

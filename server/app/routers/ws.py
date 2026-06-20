@@ -120,7 +120,26 @@ async def game_websocket(
                     await broadcast_full_state(game_id)
                 except ValueError as e:
                     await _send_error(websocket, str(e))
+            elif msg_type in ("request_rematch", "game:request_rematch"):
+                try:
+                    await game_service.request_rematch(game_id, guest_id)
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
+                    
+            elif msg_type in ("reject_rematch", "game:reject_rematch"):
+                try:
+                    await game_service.reject_rematch(game_id, guest_id)
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
 
+            elif msg_type in ("accept_rematch", "game:accept_rematch"):
+                try:
+                    await game_service.accept_rematch(game_id, guest_id)
+                    await broadcast_full_state(game_id)
+                except ValueError as e:
+                    await _send_error(websocket, str(e))
             else:
                 await _send_error(websocket, f"Unknown message type: {msg_type}")
 

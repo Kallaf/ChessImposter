@@ -316,6 +316,37 @@ async def accept_draw(game_id: str, guest_id: str) -> None:
     await end_game(game_id, guest_id, "draw")
 
 
+async def request_rematch(game_id: str, guest_id: str) -> None:
+    db = get_database()
+    # Mark that this specific guest_id has offered a rematch
+    await db.games.update_one(
+        {"gameId": game_id, "status": GameStatus.ACTIVE.value},
+        {"$set": {"rematchOffer": guest_id}}
+    )
+
+async def reject_rematch(game_id: str, guest_id: str) -> None:
+    db = get_database()
+    # Remove the rematch offer from the document
+    await db.games.update_one(
+        {"gameId": game_id},
+        {"$unset": {"rematchOffer": ""}}
+    )
+
+async def accept_rematch(game_id: str, guest_id: str) -> None:
+    doc = await get_game_doc(game_id)
+    if not doc:
+        raise ValueError("Game not found")
+
+    rematch_offer = doc.get("rematchOffer")
+
+    # Validate that an offer exists and that the player accepting is NOT the one who offered
+    if not rematch_offer or rematch_offer == guest_id:
+        raise ValueError("No valid rematch offer to accept")
+
+    # Reset the game state for a new game
+    await reset_game(game_id)
+
+
 async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
     doc = await get_game_doc(game_id)
     if not doc or doc.get("status") not in (
@@ -356,4 +387,71 @@ async def end_game(game_id: str, guest_id: str, end_game_type: str) -> None:
         {
             "$set": update_data
         },
+    )
+
+async def reset_game(game_id: str) -> None:
+    db = get_database()
+    doc = await db.games.find_one({"gameId": game_id})
+    if not doc:
+        raise ValueError("Game not found")
+
+    game_mode = doc.get("gameMode", GameMode.STANDARD.value)
+
+    # 1. Swap player colors for the rematch
+    old_white_id = doc.get("whiteGuestId")
+    old_black_id = doc.get("blackGuestId")
+    old_white_name = doc.get("whiteDisplayName")
+    old_black_name = doc.get("blackDisplayName")
+
+    # 2. Determine initial status for the new game 
+    # (Since both players are present, has_black is True)
+    new_status = _initial_status(game_mode, has_black=True)
+    now = _utcnow()
+
+    update_data = {
+        "whiteGuestId": old_black_id,
+        "blackGuestId": old_white_id,
+        "whiteDisplayName": old_black_name,
+        "blackDisplayName": old_white_name,
+        "fen": STARTING_FEN,
+        "moves": [],
+        "status": new_status,
+        "result": None,
+        "resultReason": None,
+        "updatedAt": now,
+        
+        # Reset True King variables
+        "whiteTrueKingSquare": None,
+        "blackTrueKingSquare": None,
+        "whiteTrueKingOrigin": None,
+        "blackTrueKingOrigin": None,
+        "whiteTrueKingReady": False,
+        "blackTrueKingReady": False,
+    }
+
+    # Clear any residual offers
+    unset_data = {
+        "rematchOffer": "",
+        "drawOffer": ""
+    }
+
+    # 3. Handle clocks if a time control exists
+    if doc.get("timeControl"):
+        # Re-initialize the base clock fields
+        clock_fields = clock_service.init_clock_fields(doc["timeControl"])
+        update_data.update(clock_fields)
+        
+        # If the game immediately becomes active (e.g., standard mode), start the clocks
+        if new_status == GameStatus.ACTIVE.value:
+            # Create a mock document with the new clock state to pass into the clock service
+            mock_doc = {**doc, **update_data}
+            update_data.update(clock_service.start_clocks_for_active_game(mock_doc))
+
+    # 4. Commit the reset to the database
+    await db.games.update_one(
+        {"gameId": game_id},
+        {
+            "$set": update_data,
+            "$unset": unset_data
+        }
     )
