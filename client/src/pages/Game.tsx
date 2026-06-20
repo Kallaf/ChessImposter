@@ -29,7 +29,6 @@ import { ChatWindow } from '../components/game/ChatWindow';
 import { GameOverModal } from '../components/game/GameOverModal';
 
 import type { ThemeMode } from '../App';
-import { useNotification } from '../context/NotificationContext';
 
 type GameProps = {
   theme: ThemeMode;
@@ -322,7 +321,7 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
               isChatOpen={isChatOpen} 
               onToggleChat={() => setIsChatOpen(!isChatOpen)} 
               onDraw={offerDraw}
-              onStartGame={sendConfirmTrueKing} 
+              onStartGame={sendConfirmTrueKing}
             />
 
           </div>
@@ -334,7 +333,12 @@ export default function Game({ theme, onToggleTheme }: GameProps) {
       </div>
 
       <ChatWindow isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-      <GameOverModal show={showEndPopup && game?.status === 'finished'} message={game ? statusMessage(game) : ''} onClose={() => setShowEndPopup(false)} />
+      <GameOverModal 
+        show={showEndPopup && game?.status === 'finished'} 
+        message={game ? statusMessage(game) : ''} 
+        onClose={() => setShowEndPopup(false)}
+        currentGame={game} 
+      />
     </div>
   );
 }
