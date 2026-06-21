@@ -294,7 +294,7 @@ async def request_draw(game_id: str, guest_id: str) -> None:
         {"$set": {"drawOffer": guest_id}}
     )
 
-async def reject_draw(game_id: str, guest_id: str) -> None:
+async def reject_draw(game_id: str) -> None:
     db = get_database()
     # Remove the draw offer from the document
     await db.games.update_one(
@@ -320,11 +320,11 @@ async def request_rematch(game_id: str, guest_id: str) -> None:
     db = get_database()
     # Mark that this specific guest_id has offered a rematch
     await db.games.update_one(
-        {"gameId": game_id, "status": GameStatus.ACTIVE.value},
+        {"gameId": game_id, "status": GameStatus.FINISHED.value},
         {"$set": {"rematchOffer": guest_id}}
     )
 
-async def reject_rematch(game_id: str, guest_id: str) -> None:
+async def reject_rematch(game_id: str) -> None:
     db = get_database()
     # Remove the rematch offer from the document
     await db.games.update_one(

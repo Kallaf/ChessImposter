@@ -134,7 +134,7 @@ export function useGameSocket(gameId: string | undefined) {
     ws.onerror = () => {
       if (mountedRef.current) setError('Connection error');
     };
-  }, [gameId, applyPayload, resync, handleOffers]);
+  }, [gameId, applyPayload, resync]);
 
   useEffect(() => {
     connectRef.current = connect;
